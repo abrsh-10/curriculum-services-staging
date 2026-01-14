@@ -14,7 +14,7 @@ const nextConfig = {
     '@curriculum-services/ui'
   ],
   images: {
-    domains: ['143.198.54.56', '164.90.209.220']
+    domains: ['143.198.54.56', '164.90.209.220', 'storage-prod.icogacc.com']
   },
   // any other Next.js config options you need
 }
