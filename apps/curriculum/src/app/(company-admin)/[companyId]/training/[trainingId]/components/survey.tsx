@@ -364,6 +364,7 @@ export function SurveyComponent({ trainingId }: SurveyComponentProps) {
     case 'create':
       return (
         <CreateSurveyForm
+          trainingId={trainingId}
           onCancel={() => {
             handleBackToList()
             setFocusSection(undefined) // Clear focus when canceling

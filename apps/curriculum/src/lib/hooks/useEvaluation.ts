@@ -360,11 +360,13 @@ export function useAddEvaluationSections() {
           clientId: string;
           question: string;
           questionImage?: string;
+          questionImageFile?: File;
           questionType: "TEXT" | "RADIO" | "CHECKBOX";
           choices: {
             clientId: string;
             choiceText: string;
             choiceImage?: string;
+            choiceImageFile?: File;
           }[];
           isFollowUp: boolean;
           parentQuestionClientId?: string;
@@ -376,12 +378,68 @@ export function useAddEvaluationSections() {
     }) => {
       const token = getCookie('token')
 
+      const formData = new FormData()
+      
+      sections.forEach((section, si) => {
+        formData.append(`sections[${si}].title`, section.title)
+        formData.append(`sections[${si}].description`, section.description)
+        
+        section.entries.forEach((entry, ei) => {
+          formData.append(`sections[${si}].entries[${ei}].clientId`, entry.clientId)
+          formData.append(`sections[${si}].entries[${ei}].question`, entry.question)
+          formData.append(`sections[${si}].entries[${ei}].questionType`, entry.questionType)
+          formData.append(`sections[${si}].entries[${ei}].isFollowUp`, String(entry.isFollowUp))
+          
+          // Question Image
+          if (entry.questionImageFile instanceof File) {
+            formData.append(`sections[${si}].entries[${ei}].questionImage`, entry.questionImageFile)
+          } else if (entry.questionImage) {
+            formData.append(`sections[${si}].entries[${ei}].questionImage`, entry.questionImage)
+          }
+          
+          // Follow-up logic
+          if (entry.isFollowUp) {
+            if (entry.parentQuestionClientId) {
+              formData.append(`sections[${si}].entries[${ei}].parentQuestionClientId`, entry.parentQuestionClientId)
+            }
+            if (entry.parentQuestionId) {
+              formData.append(`sections[${si}].entries[${ei}].parentQuestionId`, entry.parentQuestionId)
+            }
+            if (entry.triggerChoiceClientIds && entry.triggerChoiceClientIds.length > 0) {
+              entry.triggerChoiceClientIds.forEach((id, idx) => {
+                formData.append(`sections[${si}].entries[${ei}].triggerChoiceClientIds[${idx}]`, id)
+              })
+            }
+            if (entry.triggerChoiceIds && entry.triggerChoiceIds.length > 0) {
+              entry.triggerChoiceIds.forEach((id, idx) => {
+                formData.append(`sections[${si}].entries[${ei}].triggerChoiceIds[${idx}]`, id)
+              })
+            }
+          }
+          
+          // Choices
+          if (entry.choices && entry.choices.length > 0) {
+            entry.choices.forEach((choice, ci) => {
+              formData.append(`sections[${si}].entries[${ei}].choices[${ci}].clientId`, choice.clientId)
+              formData.append(`sections[${si}].entries[${ei}].choices[${ci}].choiceText`, choice.choiceText)
+              
+              // Choice Image
+              if (choice.choiceImageFile instanceof File) {
+                formData.append(`sections[${si}].entries[${ei}].choices[${ci}].choiceImage`, choice.choiceImageFile)
+              } else if (choice.choiceImage) {
+                formData.append(`sections[${si}].entries[${ei}].choices[${ci}].choiceImage`, choice.choiceImage)
+              }
+            })
+          }
+        })
+      })
+
       const response = await axios.post(
         `${process.env.NEXT_PUBLIC_API}/monitoring-form-section/monitoring-form/${formId}`,
-        { sections },
+        formData,
         {
           headers: {
-            "Content-Type": "application/json",
+            "Content-Type": "multipart/form-data",
             Authorization: `Bearer ${token}`,
           },
         }
@@ -428,11 +486,13 @@ export function useAddQuestionEntry() {
         clientId: string;
         question: string;
         questionImage?: string;
+        questionImageFile?: File;
         questionType: "TEXT" | "RADIO" | "CHECKBOX";
         choices: {
           clientId: string;
           choiceText: string;
           choiceImage?: string;
+          choiceImageFile?: File;
         }[];
         isFollowUp: boolean;
         parentQuestionClientId?: string;
@@ -442,12 +502,61 @@ export function useAddQuestionEntry() {
       };
     }) => {
       const token = getCookie('token')
+      
+      const formData = new FormData()
+      formData.append('clientId', entry.clientId)
+      formData.append('question', entry.question)
+      formData.append('questionType', entry.questionType)
+      formData.append('isFollowUp', String(entry.isFollowUp))
+      
+      // Question Image
+      if (entry.questionImageFile instanceof File) {
+        formData.append('questionImage', entry.questionImageFile)
+      } else if (entry.questionImage) {
+        formData.append('questionImage', entry.questionImage)
+      }
+      
+      // Follow-up logic
+      if (entry.isFollowUp) {
+        if (entry.parentQuestionClientId) {
+          formData.append('parentQuestionClientId', entry.parentQuestionClientId)
+        }
+        if (entry.parentQuestionId) {
+          formData.append('parentQuestionId', entry.parentQuestionId)
+        }
+        if (entry.triggerChoiceClientIds && entry.triggerChoiceClientIds.length > 0) {
+          entry.triggerChoiceClientIds.forEach((id, idx) => {
+            formData.append(`triggerChoiceClientIds[${idx}]`, id)
+          })
+        }
+        if (entry.triggerChoiceIds && entry.triggerChoiceIds.length > 0) {
+          entry.triggerChoiceIds.forEach((id, idx) => {
+            formData.append(`triggerChoiceIds[${idx}]`, id)
+          })
+        }
+      }
+      
+      // Choices
+      if (entry.choices && entry.choices.length > 0) {
+        entry.choices.forEach((choice, ci) => {
+          formData.append(`choices[${ci}].clientId`, choice.clientId)
+          formData.append(`choices[${ci}].choiceText`, choice.choiceText)
+          
+          // Choice Image
+          if (choice.choiceImageFile instanceof File) {
+            formData.append(`choices[${ci}].choiceImage`, choice.choiceImageFile)
+          } else if (choice.choiceImage) {
+            formData.append(`choices[${ci}].choiceImage`, choice.choiceImage)
+          }
+        })
+      }
+      
       const response = await axios.post(
         `${process.env.NEXT_PUBLIC_API}/monitoring-form-entry/monitoring-form-section/${sectionId}`,
-        entry,
+        formData,
         {
           headers: {
-            "Content-Type": "application/json",
+            "Content-Type": "multipart/form-data",
             Authorization: `Bearer ${token}`,
           },
         }
@@ -487,11 +596,13 @@ export function useUpdateQuestionEntry() {
       data: {
         question: string;
         questionImage?: string;
+        questionImageFile?: File;
         questionType: "TEXT" | "RADIO" | "CHECKBOX";
         choices: {
           clientId: string;
           choiceText: string;
           choiceImage?: string;
+          choiceImageFile?: File;
         }[];
         isFollowUp: boolean;
         parentQuestionId?: string;
@@ -499,12 +610,52 @@ export function useUpdateQuestionEntry() {
       };
     }) => {
       const token = getCookie('token')
+      
+      const formData = new FormData()
+      formData.append('question', data.question)
+      formData.append('questionType', data.questionType)
+      formData.append('isFollowUp', String(data.isFollowUp))
+      
+      // Question Image
+      if (data.questionImageFile instanceof File) {
+        formData.append('questionImage', data.questionImageFile)
+      } else if (data.questionImage) {
+        formData.append('questionImage', data.questionImage)
+      }
+      
+      // Follow-up logic
+      if (data.isFollowUp) {
+        if (data.parentQuestionId) {
+          formData.append('parentQuestionId', data.parentQuestionId)
+        }
+        if (data.triggerChoiceIds && data.triggerChoiceIds.length > 0) {
+          data.triggerChoiceIds.forEach((id, idx) => {
+            formData.append(`triggerChoiceIds[${idx}]`, id)
+          })
+        }
+      }
+      
+      // Choices
+      if (data.choices && data.choices.length > 0) {
+        data.choices.forEach((choice, ci) => {
+          formData.append(`choices[${ci}].clientId`, choice.clientId)
+          formData.append(`choices[${ci}].choiceText`, choice.choiceText)
+          
+          // Choice Image
+          if (choice.choiceImageFile instanceof File) {
+            formData.append(`choices[${ci}].choiceImage`, choice.choiceImageFile)
+          } else if (choice.choiceImage) {
+            formData.append(`choices[${ci}].choiceImage`, choice.choiceImage)
+          }
+        })
+      }
+      
       const response = await axios.patch(
         `${process.env.NEXT_PUBLIC_API}/monitoring-form-entry/${entryId}`,
-        data,
+        formData,
         {
           headers: {
-            "Content-Type": "application/json",
+            "Content-Type": "multipart/form-data",
             Authorization: `Bearer ${token}`
           }
         }
@@ -535,15 +686,28 @@ export function useEditChoice() {
         clientId: string;
         choiceText: string;
         choiceImage?: string;
+        choiceImageFile?: File;
       }
     }) => {
       const token = getCookie('token')
+      
+      const formData = new FormData()
+      formData.append('clientId', data.clientId)
+      formData.append('choiceText', data.choiceText)
+      
+      // Choice Image
+      if (data.choiceImageFile instanceof File) {
+        formData.append('choiceImage', data.choiceImageFile)
+      } else if (data.choiceImage) {
+        formData.append('choiceImage', data.choiceImage)
+      }
+      
       const response = await axios.patch(
         `${process.env.NEXT_PUBLIC_API}/monitoring-form-entry/edit-choice/${choiceId}`,
-        data,
+        formData,
         {
           headers: {
-            "Content-Type": "application/json",
+            "Content-Type": "multipart/form-data",
             Authorization: `Bearer ${token}`
           }
         }
@@ -573,15 +737,28 @@ export function useAddChoice() {
         clientId: string;
         choiceText: string;
         choiceImage?: string;
+        choiceImageFile?: File;
       }
     }) => {
       const token = getCookie('token')
+      
+      const formData = new FormData()
+      formData.append('clientId', data.clientId)
+      formData.append('choiceText', data.choiceText)
+      
+      // Choice Image
+      if (data.choiceImageFile instanceof File) {
+        formData.append('choiceImage', data.choiceImageFile)
+      } else if (data.choiceImage) {
+        formData.append('choiceImage', data.choiceImage)
+      }
+      
       const response = await axios.post(
         `${process.env.NEXT_PUBLIC_API}/monitoring-form-entry/${entryId}/add-choice`,
-        data,
+        formData,
         {
           headers: {
-            "Content-Type": "application/json",
+            "Content-Type": "multipart/form-data",
             Authorization: `Bearer ${token}`
           }
         }
