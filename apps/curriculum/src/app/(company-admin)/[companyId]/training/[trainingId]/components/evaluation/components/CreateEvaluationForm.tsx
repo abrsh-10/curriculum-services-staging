@@ -587,11 +587,13 @@ function CreateEvaluationFormInner({ trainingId, onCancel, editingEvaluation }: 
                       clientId: entry.clientId,
                       question: entry.question,
                       questionImage: entry.questionImage,
+                      questionImageFile: entry.questionImageFile,
                       questionType: entry.questionType,
                       choices: entry.choices.map((choice) => ({
                         clientId: choice.clientId,
                         choiceText: choice.choiceText,
-                        choiceImage: choice.choiceImage
+                        choiceImage: choice.choiceImage,
+                        choiceImageFile: choice.choiceImageFile
                       })),
                       isFollowUp: false,
                       parentQuestionClientId: undefined,
@@ -608,11 +610,13 @@ function CreateEvaluationFormInner({ trainingId, onCancel, editingEvaluation }: 
                           clientId: follow.clientId,
                           question: follow.question,
                           questionImage: follow.questionImage,
+                          questionImageFile: follow.questionImageFile,
                           questionType: follow.questionType,
                           choices: (follow.choices || []).map((fChoice) => ({
                             clientId: fChoice.clientId,
                             choiceText: fChoice.choiceText,
-                            choiceImage: fChoice.choiceImage
+                            choiceImage: fChoice.choiceImage,
+                            choiceImageFile: fChoice.choiceImageFile
                           })),
                           isFollowUp: true,
                           parentQuestionClientId: entry.clientId,
@@ -686,11 +690,13 @@ function CreateEvaluationFormInner({ trainingId, onCancel, editingEvaluation }: 
                                     clientId: entry.clientId,
                                     question: entry.question,
                                     questionImage: entry.questionImage,
+                                    questionImageFile: entry.questionImageFile,
                                     questionType: entry.questionType,
                                     choices: entry.choices.map((choice) => ({
                                       clientId: choice.clientId,
                                       choiceText: choice.choiceText,
-                                      choiceImage: choice.choiceImage
+                                      choiceImage: choice.choiceImage,
+                                      choiceImageFile: choice.choiceImageFile
                                     })),
                                     isFollowUp: false
                                   }
@@ -706,11 +712,13 @@ function CreateEvaluationFormInner({ trainingId, onCancel, editingEvaluation }: 
                                         clientId: follow.clientId,
                                         question: follow.question,
                                         questionImage: follow.questionImage,
+                                        questionImageFile: follow.questionImageFile,
                                         questionType: follow.questionType,
                                         choices: (follow.choices || []).map((fChoice) => ({
                                           clientId: fChoice.clientId,
                                           choiceText: fChoice.choiceText,
-                                          choiceImage: fChoice.choiceImage
+                                          choiceImage: fChoice.choiceImage,
+                                          choiceImageFile: fChoice.choiceImageFile
                                         })),
                                         isFollowUp: true,
                                         parentQuestionClientId: entry.clientId,
@@ -721,16 +729,18 @@ function CreateEvaluationFormInner({ trainingId, onCancel, editingEvaluation }: 
                                 }
                               } else {
                                 // If section not yet persisted, fallback to add whole section approach
-                                const entries: any[] = []
+                                const entries: EvaluationEntryPayload[] = []
                                 entries.push({
                                   clientId: entry.clientId,
                                   question: entry.question,
                                   questionImage: entry.questionImage,
+                                  questionImageFile: entry.questionImageFile,
                                   questionType: entry.questionType,
                                   choices: entry.choices.map((choice) => ({
                                     clientId: choice.clientId,
                                     choiceText: choice.choiceText,
-                                    choiceImage: choice.choiceImage
+                                    choiceImage: choice.choiceImage,
+                                    choiceImageFile: choice.choiceImageFile
                                   })),
                                   isFollowUp: false
                                 })
@@ -741,11 +751,13 @@ function CreateEvaluationFormInner({ trainingId, onCancel, editingEvaluation }: 
                                       clientId: follow.clientId,
                                       question: follow.question,
                                       questionImage: follow.questionImage,
+                                      questionImageFile: follow.questionImageFile,
                                       questionType: follow.questionType,
                                       choices: (follow.choices || []).map((fChoice) => ({
                                         clientId: fChoice.clientId,
                                         choiceText: fChoice.choiceText,
-                                        choiceImage: fChoice.choiceImage
+                                        choiceImage: fChoice.choiceImage,
+                                        choiceImageFile: fChoice.choiceImageFile
                                       })),
                                       isFollowUp: true,
                                       parentQuestionClientId: entry.clientId,

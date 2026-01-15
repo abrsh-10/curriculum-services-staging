@@ -3,18 +3,33 @@
 import { useState, useEffect, useMemo, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { toast } from "sonner"
+
+// New types
 import { 
-  CreateSurveyData, 
-  CreateSurveySection, 
-  CreateSurveyEntry, 
-  UpdateSurveyEntryData,
-  QuestionType,
   SurveyType,
-  validateCreateSurveyEntry,
-  useSurveySections,
+  SurveySectionForm,
+  SurveyEntryForm,
+  SurveyEntryPayload,
+  CreateSurveyPayload,
+  emptySection,
+  emptyEntry,
+  emptyChoice,
+  validateSurveyEntry,
+  flattenEntriesForPayload,
+  transformResponseToForm,
+  useCreateSurveyNew,
+  useSurveyDetailNew,
   useAddSectionToSurvey
 } from "@/lib/hooks/useSurvey"
-import { toast } from "sonner"
+
+// Legacy types for backward compatibility with parent component
+import type { 
+  CreateSurveyData, 
+  CreateSurveySection, 
+  CreateSurveyEntry,
+  UpdateSurveyEntryData
+} from "@/lib/hooks/useSurvey"
 
 // Import the new components
 import { SurveySettings } from "./components/SurveySettings"
@@ -23,12 +38,12 @@ import { QuestionPreview } from "./components/QuestionPreviews"
 import { SingleQuestionEditor } from "./components/SingleQuestionEditor"
 
 interface CreateSurveyFormProps {
+  trainingId: string
   onCancel: () => void
   onSubmit: (data: CreateSurveyData & { 
     editMetadata?: {
       newSections: CreateSurveySection[]
       newQuestionsPerSection: { sectionIndex: number; sectionId?: string; newQuestions: CreateSurveyEntry[] }[]
-      // new fields for update tracking
       updatedQuestions?: { 
         sectionIndex: number; 
         questionIndex: number; 
@@ -40,13 +55,13 @@ interface CreateSurveyFormProps {
     }
   }) => void
   isSubmitting: boolean
-  editingSurveyId?: string // Optional - if provided, we're in edit mode
+  editingSurveyId?: string
   initialSurveyName?: string
   initialSurveyType?: SurveyType
   initialSurveyDescription?: string
   focusSection?: {
-    sectionId?: string // If provided, focus on this section for adding questions
-    action: 'add-question' | 'add-section' | 'edit-questions' // Whether to add question, new section, or edit existing questions
+    sectionId?: string
+    action: 'add-question' | 'add-section' | 'edit-questions'
   }
   onDeleteQuestion?: (questionId: string, onSuccess?: () => void) => void
   onDeleteSection?: (sectionId: string) => void
@@ -54,6 +69,7 @@ interface CreateSurveyFormProps {
 }
 
 export function CreateSurveyForm({
+  trainingId,
   onCancel,
   onSubmit,
   isSubmitting,
@@ -73,208 +89,119 @@ export function CreateSurveyForm({
   const [surveyType, setSurveyType] = useState<SurveyType>(initialSurveyType)
   const [surveyDescription, setSurveyDescription] = useState(initialSurveyDescription)
   
-  // Sections and questions state
-  const [sections, setSections] = useState<CreateSurveySection[]>([
-    {
-      title: "",
-      description: "",
-      surveyEntries: [
-        {
-          question: "",
-          questionImage: undefined,
-          questionType: "RADIO",
-          choices: [{ choice: "" }, { choice: "" }],
-          allowTextAnswer: false,
-          rows: [],
-          required: true,
-          followUp: false,
-          questionNumber: 1
-        }
-      ]
-    }
-  ])
+  // NEW: Sections with new types (SurveySectionForm with clientIds)
+  const [sections, setSections] = useState<SurveySectionForm[]>([emptySection(1)])
   
   // Change tracking for edit mode
   const [sectionsLoaded, setSectionsLoaded] = useState(false)
   const [originalSectionsCount, setOriginalSectionsCount] = useState(0)
   const [originalQuestionCounts, setOriginalQuestionCounts] = useState<number[]>([])
-  const [originalSectionsSnapshot, setOriginalSectionsSnapshot] = useState<CreateSurveySection[]>([])
+  const [originalSectionsSnapshot, setOriginalSectionsSnapshot] = useState<SurveySectionForm[]>([])
   
   // Navigation state
   const [selectedSection, setSelectedSection] = useState(0)
   const [selectedQuestion, setSelectedQuestion] = useState(0)
   const [editMode, setEditMode] = useState<'survey' | 'question'>('survey')
 
-  // Fetch existing survey sections if in edit mode
+  // NEW: Fetch existing survey with new API format
   const { 
-    data: existingSectionsData
-  } = useSurveySections(editingSurveyId || "")
+    data: surveyDetailData,
+    isLoading: isLoadingDetail
+  } = useSurveyDetailNew(editingSurveyId || "")
+
+  // Hook for adding sections
+  const { isLoading: isAddingSection } = useAddSectionToSurvey()
+
+  // Create survey mutation (new format)
+  const createSurveyMutation = useCreateSurveyNew(trainingId)
 
   // Helper function to calculate the next question number
-  const getNextQuestionNumber = useCallback((sectionsSnapshot?: CreateSurveySection[]) => {
-    const currentSections = sectionsSnapshot || sections;
-    
-    if (isEditMode && existingSectionsData?.sections) {
-      // Count all existing questions (including follow-ups)
-      let totalQuestions = existingSectionsData.sections.reduce((count, section) => 
-        count + (section.questions?.length || 0), 0
-      );
-      // Add any new questions that have been added in current session
-      totalQuestions += currentSections.reduce((count, section, idx) => {
-        const originalCount = originalQuestionCounts[idx] || 0;
-        const newQuestionsInSection = Math.max(0, section.surveyEntries.length - originalCount);
-        return count + newQuestionsInSection;
-      }, 0);
-      return totalQuestions + 1;
-    } else {
-      // Create mode: just count current sections
-      return currentSections.reduce((count, section) => count + section.surveyEntries.length, 0) + 1;
-    }
-  }, [sections, isEditMode, existingSectionsData?.sections, originalQuestionCounts]);
+  const getNextQuestionNumber = useCallback(() => {
+    let total = 0
+    sections.forEach(section => {
+      // Count main questions
+      total += section.entries.length
+      // Count follow-up questions embedded in choices
+      section.entries.forEach(entry => {
+        entry.choices.forEach(choice => {
+          if (choice.hasFollowUp && choice.followUpQuestion) {
+            total += 1
+          }
+        })
+      })
+    })
+    return total + 1
+  }, [sections])
 
-  // Track the last loaded data to detect changes
-  const [lastLoadedDataHash, setLastLoadedDataHash] = useState<string>("")
-
-  // Load existing sections when data is available or updated
+  // Load existing survey data (NEW FORMAT)
   useEffect(() => {
-    if (isEditMode && existingSectionsData?.sections) {
-      // Create a simple hash of the data to detect changes
-      const dataHash = JSON.stringify(existingSectionsData.sections.map(s => ({
-        id: s.id,
-        title: s.title,
-        questions: s.questions.map(q => ({
-          id: q.id,
-          question: q.question,
-          choices: q.choices
-        }))
-      })))
+    if (isEditMode && surveyDetailData?.formSections && !sectionsLoaded) {
+      const loadedSections = surveyDetailData.formSections
       
-      // Only update if this is the first load or if the data has actually changed
-      if (!sectionsLoaded || (sectionsLoaded && dataHash !== lastLoadedDataHash)) {
-      // Convert existing sections to CreateSurveySection format
-      const convertedSections: CreateSurveySection[] = existingSectionsData.sections.map(section => ({
-        title: section.title,
-        description: section.description || "",
-        surveyEntries: section.questions.map(question => ({
-          question: question.question,
-          questionImage: question.questionImageUrl || undefined,
-          questionType: question.questionType,
-          choices: (question.choices || []).map(c => ({ 
-            choice: typeof c === 'string' ? c : (c?.choiceText || ''),
-            choiceImage: typeof c === 'string' ? undefined : c?.choiceImageUrl
-          })),
-          allowTextAnswer: question.allowMultipleAnswers, // Convert back to create format
-          rows: question.rows,
-          required: question.required,
-          // Map follow-up fields from API response
-          questionNumber: question.questionNumber,
-          followUp: question.followUp || false,
-          parentQuestionNumber: question.parentQuestionNumber || undefined,
-          parentChoice: question.parentChoice || undefined
-        }))
-      }))
-
-      // Track original counts for change detection BEFORE adding focus section items
-      setOriginalSectionsCount(convertedSections.length)
-      setOriginalQuestionCounts(convertedSections.map(section => section.surveyEntries.length))
-      setOriginalSectionsSnapshot(convertedSections.map(s => ({ 
-        title: s.title, 
-        description: s.description,
-        surveyEntries: s.surveyEntries.map(e => ({...e})) 
-      })))
-
-      // Handle focus section logic AFTER tracking original counts
+      // Track original counts for change detection
+      setOriginalSectionsCount(loadedSections.length)
+      setOriginalQuestionCounts(loadedSections.map(section => section.entries.length))
+      setOriginalSectionsSnapshot(JSON.parse(JSON.stringify(loadedSections)))
+      
+      // Handle focus section logic
+      let finalSections = [...loadedSections]
+      
       if (focusSection?.action === 'add-question' && focusSection.sectionId) {
-        // Find the specific section and add a new question to it
-        const sectionIndex = existingSectionsData.sections.findIndex(s => s.id === focusSection.sectionId)
+        const sectionIndex = loadedSections.findIndex(s => s.id === focusSection.sectionId)
         if (sectionIndex !== -1) {
-          convertedSections[sectionIndex].surveyEntries.push({
-            question: "",
-            questionImage: undefined,
-            questionType: "TEXT",
-            choices: [],
-            allowTextAnswer: false,
-            rows: [],
-            required: true,
-            followUp: false,
-            questionNumber: getNextQuestionNumber(convertedSections)
-          })
+          finalSections[sectionIndex] = {
+            ...finalSections[sectionIndex],
+            entries: [...finalSections[sectionIndex].entries, emptyEntry(getNextQuestionNumber())]
+          }
           setSelectedSection(sectionIndex)
-          setSelectedQuestion(convertedSections[sectionIndex].surveyEntries.length - 1)
-          setEditMode('question') // Switch to question editing mode
+          setSelectedQuestion(finalSections[sectionIndex].entries.length - 1)
+          setEditMode('question')
         }
       } else if (focusSection?.action === 'edit-questions' && focusSection.sectionId) {
-        // Find the specific section and focus on its first question
-        const sectionIndex = existingSectionsData.sections.findIndex(s => s.id === focusSection.sectionId)
-        if (sectionIndex !== -1 && convertedSections[sectionIndex].surveyEntries.length > 0) {
+        const sectionIndex = loadedSections.findIndex(s => s.id === focusSection.sectionId)
+        if (sectionIndex !== -1 && loadedSections[sectionIndex].entries.length > 0) {
           setSelectedSection(sectionIndex)
-          setSelectedQuestion(0) // Focus on first question
-          setEditMode('question') // Switch to question editing mode
+          setSelectedQuestion(0)
+          setEditMode('question')
         }
       } else if (focusSection?.action === 'add-section') {
-        // Add a new empty section
-        convertedSections.push({
-          title: "",
-          description: "",
-          surveyEntries: [{
-            question: "",
-            questionImage: undefined,
-            questionType: "TEXT",
-            choices: [],
-            allowTextAnswer: false,
-            rows: [],
-            required: true,
-            followUp: false,
-            questionNumber: getNextQuestionNumber(convertedSections)
-          }]
-        })
-        setSelectedSection(convertedSections.length - 1)
+        const newSection = emptySection(loadedSections.length + 1)
+        newSection.entries = [emptyEntry(getNextQuestionNumber())]
+        finalSections.push(newSection)
+        setSelectedSection(finalSections.length - 1)
         setSelectedQuestion(0)
-        setEditMode('question') // Switch to question editing mode
+        setEditMode('question')
       }
 
-        setSections(convertedSections)
-        setSectionsLoaded(true)
-        setLastLoadedDataHash(dataHash)
-      }
+      setSections(finalSections)
+      setSectionsLoaded(true)
     }
-  }, [existingSectionsData, isEditMode, sectionsLoaded, focusSection, getNextQuestionNumber, lastLoadedDataHash])
-
-  // Hook for adding sections to existing surveys
-  const { isLoading: isAddingSection } = useAddSectionToSurvey()
+  }, [surveyDetailData, isEditMode, sectionsLoaded, focusSection, getNextQuestionNumber])
 
   // Section management functions
   const addSection = () => {
-    setSections(prev => [...prev, {
-      title: "",
-      description: "",
-      surveyEntries: [{
-        question: "",
-        questionImage: undefined,
-        questionType: "RADIO",
-        choices: [{ choice: "" }, { choice: "" }],
-        allowTextAnswer: false,
-        rows: [],
-        required: true,
-        followUp: false,
-        questionNumber: getNextQuestionNumber()
-      }]
-    }])
+    const newSection = emptySection(sections.length + 1)
+    newSection.entries = [emptyEntry(getNextQuestionNumber())]
+    setSections(prev => [...prev, newSection])
+    setSelectedSection(sections.length)
+    setSelectedQuestion(0)
+    setEditMode('question')
   }
 
   const removeSection = (sectionIndex: number) => {
     setSections(prev => prev.filter((_, i) => i !== sectionIndex))
+    if (selectedSection >= sectionIndex && selectedSection > 0) {
+      setSelectedSection(selectedSection - 1)
+    }
   }
 
   const handleDeleteSection = (sectionIndex: number) => {
     if (isEditMode && sectionIndex < originalSectionsCount) {
-      // This is an existing section, call API to delete
-      const sectionId = existingSectionsData?.sections[sectionIndex]?.id
+      const sectionId = sections[sectionIndex]?.id
       if (sectionId && onDeleteSection) {
         onDeleteSection(sectionId)
       }
     } else {
-      // This is a new section, just remove from local state
       removeSection(sectionIndex)
     }
   }
@@ -293,36 +220,21 @@ export function CreateSurveyForm({
 
   // Question management functions
   const addQuestion = (sectionIndex: number) => {
-    setSections(prev => {
-      const nextQuestionNumber = getNextQuestionNumber(prev);
-      return prev.map((section, i) => 
-        i === sectionIndex 
-          ? { 
-              ...section, 
-              surveyEntries: [...section.surveyEntries, {
-                question: "",
-                questionImage: undefined,
-                questionType: "RADIO",
-                choices: [{ choice: "" }, { choice: "" }],
-                allowTextAnswer: false,
-                rows: [],
-                required: true,
-                followUp: false,
-                questionNumber: nextQuestionNumber
-              }]
-            }
-          : section
-      );
-    })
+    const newEntry = emptyEntry(getNextQuestionNumber())
+    setSections(prev => prev.map((section, i) => 
+      i === sectionIndex 
+        ? { ...section, entries: [...section.entries, newEntry] }
+        : section
+    ))
+    setSelectedSection(sectionIndex)
+    setSelectedQuestion(sections[sectionIndex].entries.length)
+    setEditMode('question')
   }
 
   const removeQuestion = (sectionIndex: number, questionIndex: number) => {
     setSections(prev => prev.map((section, i) => 
       i === sectionIndex 
-        ? { 
-            ...section, 
-            surveyEntries: section.surveyEntries.filter((_, qI) => qI !== questionIndex)
-          }
+        ? { ...section, entries: section.entries.filter((_, qI) => qI !== questionIndex) }
         : section
     ))
   }
@@ -331,200 +243,43 @@ export function CreateSurveyForm({
     if (isEditMode && 
         sectionIndex < originalSectionsCount && 
         questionIndex < (originalQuestionCounts[sectionIndex] || 0)) {
-      // This is an existing question, call API to delete
-      const questionId = existingSectionsData?.sections[sectionIndex]?.questions[questionIndex]?.id
+      const questionId = sections[sectionIndex]?.entries[questionIndex]?.id
       if (questionId && onDeleteQuestion) {
         onDeleteQuestion(questionId, () => {
-          // After successful deletion, update local state and navigate properly
           removeQuestion(sectionIndex, questionIndex)
-          
-          // Navigate to a valid question or back to survey mode
           const section = sections[sectionIndex]
-          if (section && section.surveyEntries.length > 1) {
-            // Navigate to previous question if available, otherwise first question
+          if (section && section.entries.length > 1) {
             const newQuestionIndex = questionIndex > 0 ? questionIndex - 1 : 0
             setSelectedQuestion(newQuestionIndex)
           } else if (sections.length > 0) {
-            // If no questions left in section, go to survey mode
             setEditMode('survey')
           }
         })
       }
     } else {
-      // This is a new question, just remove from local state
       removeQuestion(sectionIndex, questionIndex)
-      
-      // Navigate to a valid question or back to survey mode
       const section = sections[sectionIndex]
-      if (section && section.surveyEntries.length > 1) {
-        // Navigate to previous question if available, otherwise first question
+      if (section && section.entries.length > 1) {
         const newQuestionIndex = questionIndex > 0 ? questionIndex - 1 : 0
         setSelectedQuestion(newQuestionIndex)
       } else if (sections.length > 0) {
-        // If no questions left in section, go to survey mode
         setEditMode('survey')
       }
     }
   }
 
-
-
-  const updateQuestion = (sectionIndex: number, questionIndex: number, updates: Partial<CreateSurveyEntry>) => {
-    setSections(prev => {
-      const newSections = prev.map((section, i) => 
-        i === sectionIndex 
-          ? { 
-              ...section, 
-              surveyEntries: section.surveyEntries.map((entry, qI) => 
-                qI === questionIndex ? { ...entry, ...updates } : entry
-              )
-            }
-          : section
-      );
-      return newSections;
-    });
+  const updateQuestion = (sectionIndex: number, questionIndex: number, updates: Partial<SurveyEntryForm>) => {
+    setSections(prev => prev.map((section, i) => 
+      i === sectionIndex 
+        ? { 
+            ...section, 
+            entries: section.entries.map((entry, qI) => 
+              qI === questionIndex ? { ...entry, ...updates } : entry
+            )
+          }
+        : section
+    ))
   }
-
-  // Compute changed items for edit mode
-  const editChanges = useMemo(() => {
-    if (!isEditMode || !existingSectionsData?.sections) return null
-    const updatedSectionTitles: { sectionIndex: number; sectionId: string; title: string; description?: string }[] = []
-    const updatedQuestions: { 
-      sectionIndex: number; 
-      questionIndex: number; 
-      questionId: string; 
-      updates: Partial<UpdateSurveyEntryData>;
-      changeType: string;
-    }[] = []
-
-    // Existing sections only
-    for (let i = 0; i < Math.min(originalSectionsCount, sections.length); i++) {
-      const current = sections[i]
-      const original = originalSectionsSnapshot[i]
-      const existingSection = existingSectionsData.sections[i]
-      // Section title or description change
-      const titleChanged = current?.title !== original?.title
-      const descriptionChanged = current?.description !== original?.description
-      
-      if ((titleChanged || descriptionChanged) && existingSection?.id) {
-        updatedSectionTitles.push({ 
-          sectionIndex: i, 
-          sectionId: existingSection.id, 
-          title: current.title,
-          description: current.description
-        })
-      }
-      // Questions inside existing section (only up to original count; extras are handled as new)
-      const originalQCount = originalQuestionCounts[i] || 0
-      for (let q = 0; q < Math.min(originalQCount, current.surveyEntries.length); q++) {
-        const currQ = current.surveyEntries[q]
-        const origQ = original.surveyEntries[q]
-        const existingQ = existingSection?.questions[q]
-        if (!existingQ?.id) continue
-        // Detect all changes for this question and combine into single update
-        const questionChanges: Partial<UpdateSurveyEntryData> = {}
-        const changeTypes: string[] = []
-        let hasChanges = false
-        
-        // Check question text change
-        if (currQ.question !== origQ.question) {
-          questionChanges.question = currQ.question
-          changeTypes.push('text')
-          hasChanges = true
-        }
-        
-        // Check question image change
-        if (currQ.questionImage !== origQ.questionImage || currQ.questionImageFile !== origQ.questionImageFile) {
-          questionChanges.questionImage = currQ.questionImage
-          questionChanges.questionImageFile = currQ.questionImageFile
-          changeTypes.push('image')
-          hasChanges = true
-        }
-        
-        // Check required field change
-        if (currQ.required !== origQ.required) {
-          questionChanges.isRequired = currQ.required
-          changeTypes.push('required')
-          hasChanges = true
-        }
-        
-        // Check question type change (send type + choices since old choices get cleared)
-        if (currQ.questionType !== origQ.questionType) {
-          questionChanges.questionType = currQ.questionType as QuestionType
-          questionChanges.choices = (currQ.choices || []).map((c) => ({
-            choice: (c as unknown as { choice?: string }).choice ?? (c as unknown as string) ?? "",
-            choiceImage: (c as unknown as { choiceImage?: string }).choiceImage,
-            choiceImageFile: (c as unknown as { choiceImageFile?: File }).choiceImageFile
-          }))
-          changeTypes.push('type')
-          hasChanges = true
-        }
-        
-        // Check rows change (for GRID questions)
-        if (JSON.stringify(currQ.rows) !== JSON.stringify(origQ.rows)) {
-          questionChanges.rows = currQ.rows
-          changeTypes.push('rows')
-          hasChanges = true
-        }
-        
-        // Check allow other answer change
-        if (currQ.allowTextAnswer !== origQ.allowTextAnswer) {
-          questionChanges.allowOtherAnswer = currQ.allowTextAnswer ?? false
-          changeTypes.push('allowOther')
-          hasChanges = true
-        }
-        
-        // Check follow-up field changes
-        if (currQ.followUp !== origQ.followUp) {
-          questionChanges.isFollowUp = currQ.followUp ?? false
-          changeTypes.push('followUp')
-          hasChanges = true
-        }
-        
-        // Check parent question number change
-        if (currQ.parentQuestionNumber !== origQ.parentQuestionNumber) {
-          questionChanges.parentQuestionNumber = currQ.parentQuestionNumber
-          changeTypes.push('parentQuestion')
-          hasChanges = true
-        }
-        
-        // Check parent choice change
-        if (currQ.parentChoice !== origQ.parentChoice) {
-          questionChanges.parentChoice = currQ.parentChoice
-          changeTypes.push('parentChoice')
-          hasChanges = true
-        }
-        
-        // If any changes detected, create single combined update
-        if (hasChanges) {
-          updatedQuestions.push({
-            sectionIndex: i,
-            questionIndex: q,
-            questionId: existingQ.id,
-            updates: questionChanges,
-            changeType: changeTypes.join('+') // Combined change types like "text+image+required"
-          })
-        }
-      }
-    }
-
-    // Detect newly added sections
-    const newSections = sections.length > originalSectionsCount ? sections.slice(originalSectionsCount) : []
-
-    // Detect new questions in existing sections
-    const newQuestionsPerSection: { sectionIndex: number; sectionId?: string; newQuestions: CreateSurveyEntry[] }[] = []
-    for (let i = 0; i < Math.min(originalSectionsCount, sections.length); i++) {
-      const current = sections[i]
-      const originalQCount = originalQuestionCounts[i] || 0
-      if (current.surveyEntries.length > originalQCount) {
-        const extras = current.surveyEntries.slice(originalQCount)
-        const sectionId = existingSectionsData.sections[i]?.id
-        newQuestionsPerSection.push({ sectionIndex: i, sectionId, newQuestions: extras })
-      }
-    }
-
-    return { updatedSectionTitles, updatedQuestions, newSections, newQuestionsPerSection }
-  }, [isEditMode, sections, originalSectionsCount, originalQuestionCounts, originalSectionsSnapshot, existingSectionsData])
 
   // Navigation functions
   const selectSurveySettings = () => {
@@ -538,7 +293,7 @@ export function CreateSurveyForm({
   }
 
   // Form validation
-  const validateForm = () => {
+  const validateForm = (): boolean => {
     if (!surveyName.trim()) {
       toast.error("Survey name is required")
       return false
@@ -557,26 +312,29 @@ export function CreateSurveyForm({
         return false
       }
 
-      if (section.surveyEntries.length === 0) {
+      if (section.entries.length === 0) {
         toast.error(`Section "${section.title}" must have at least one question`)
         return false
       }
 
-      for (let questionIndex = 0; questionIndex < section.surveyEntries.length; questionIndex++) {
-        const question = section.surveyEntries[questionIndex]
-        // enforce: first question in a section can't be follow-up
-        if (questionIndex === 0 && question.followUp) {
-          toast.message(`Disabled follow-up for first question in "${section.title}"`)
-          setSections(prev => prev.map((s, i) => i === sectionIndex ? {
-            ...s,
-            surveyEntries: s.surveyEntries.map((e, qi) => qi === questionIndex ? { ...e, followUp: false, parentQuestionNumber: undefined, parentChoice: undefined } : e)
-          } : s))
-        }
-        const validation = validateCreateSurveyEntry(question)
+      for (let questionIndex = 0; questionIndex < section.entries.length; questionIndex++) {
+        const question = section.entries[questionIndex]
+        const validation = validateSurveyEntry(question)
         
         if (!validation.isValid) {
           toast.error(`Section "${section.title}", Question ${questionIndex + 1}: ${validation.errors[0]}`)
           return false
+        }
+
+        // Validate follow-up questions in choices
+        for (const choice of question.choices) {
+          if (choice.hasFollowUp && choice.followUpQuestion) {
+            const followUpValidation = validateSurveyEntry(choice.followUpQuestion)
+            if (!followUpValidation.isValid) {
+              toast.error(`Follow-up question for "${choice.choiceText}": ${followUpValidation.errors[0]}`)
+              return false
+            }
+          }
         }
       }
     }
@@ -584,73 +342,120 @@ export function CreateSurveyForm({
     return true
   }
 
-  // Form submission
+  // Form submission - NEW FORMAT
   const handleSubmit = () => {
     if (!validateForm()) {
       return
     }
 
-    // In edit mode, we need to detect what's new and pass that information
-    const changes = isEditMode ? editChanges : null
-
-    // Calculate starting counter for new questions in edit mode
-    let globalCounter = 1;
-    if (isEditMode) {
-      // Find the highest existing question number to continue from
-      const maxExistingNumber = sections.reduce((max, sec, sectionIndex) => {
-        if (sectionIndex >= originalSectionsCount) return max;
-        return sec.surveyEntries.reduce((sectionMax, entry, questionIndex) => {
-          if (questionIndex >= (originalQuestionCounts[sectionIndex] || 0)) return sectionMax;
-          return Math.max(sectionMax, entry.questionNumber || 0);
-        }, max);
-      }, 0);
-      globalCounter = maxExistingNumber + 1;
-    }
-    
-    const normalizedSections: CreateSurveySection[] = sections.map((sec, sectionIndex) => ({
-      title: sec.title,
-      surveyEntries: sec.surveyEntries.map((entry, questionIndex) => {
-        // In edit mode, preserve existing question numbers for existing questions
-        let questionNumber: number;
-        if (isEditMode && 
-            sectionIndex < originalSectionsCount && 
-            questionIndex < (originalQuestionCounts[sectionIndex] || 0)) {
-          // This is an existing question, preserve its original questionNumber
-          questionNumber = entry.questionNumber || 1;
-        } else {
-          // This is a new question, assign next available number
-          questionNumber = globalCounter++;
-        }
-        
-        return {
-          ...entry,
-          questionNumber,
-          choices: (entry.choices || []).map(c => ({ 
-            choice: c.choice, 
-            choiceImage: c.choiceImage,
-            choiceImageFile: c.choiceImageFile  // ✅ PRESERVE FILE!
-          }))
-        }
-      })
-    }))
-
-    onSubmit({
+    // Build the new payload format
+    const payload: CreateSurveyPayload = {
       name: surveyName,
       type: surveyType,
       description: surveyDescription,
-      sections: normalizedSections,
-      ...(isEditMode && changes && {
-        editMetadata: {
-          newSections: changes.newSections,
-          newQuestionsPerSection: changes.newQuestionsPerSection,
-          updatedQuestions: changes.updatedQuestions,
-          updatedSectionTitles: changes.updatedSectionTitles,
-        },
+      sections: sections.map((section, sIndex) => ({
+        title: section.title,
+        description: section.description,
+        sectionNumber: sIndex + 1,
+        entries: flattenEntriesForPayload(section.entries)
+      }))
+    }
+
+    if (!isEditMode) {
+      // Create new survey - use the new mutation
+      createSurveyMutation.mutate(payload, {
+        onSuccess: () => {
+          onCancel() // Go back to list
+        }
       })
-    })
+    } else {
+      // Edit mode - convert to legacy format for backward compatibility with parent
+      // The parent component (survey.tsx) handles the edit logic
+      const legacySections: CreateSurveySection[] = sections.map(section => ({
+        title: section.title,
+        description: section.description,
+        surveyEntries: section.entries.map(entry => ({
+          question: entry.question,
+          questionImage: entry.questionImage,
+          questionImageFile: entry.questionImageFile,
+          questionType: entry.questionType,
+          choices: entry.choices.map(c => ({
+            choice: c.choiceText,
+            choiceImage: c.choiceImage,
+            choiceImageFile: c.choiceImageFile
+          })),
+          allowTextAnswer: entry.hasTextInput || false,
+          rows: entry.gridRows.map(r => r.rowText),
+          required: entry.isRequired,
+          questionNumber: entry.questionNumber,
+          followUp: entry.isFollowUp,
+          parentQuestionNumber: undefined, // Legacy field
+          parentChoice: undefined // Legacy field
+        }))
+      }))
+
+      // Calculate edit metadata for the parent component
+      const newSections = sections.length > originalSectionsCount 
+        ? legacySections.slice(originalSectionsCount) 
+        : []
+
+      const newQuestionsPerSection: { sectionIndex: number; sectionId?: string; newQuestions: CreateSurveyEntry[] }[] = []
+      for (let i = 0; i < Math.min(originalSectionsCount, sections.length); i++) {
+        const current = sections[i]
+        const originalQCount = originalQuestionCounts[i] || 0
+        if (current.entries.length > originalQCount) {
+          const extras = current.entries.slice(originalQCount).map(entry => ({
+            question: entry.question,
+            questionImage: entry.questionImage,
+            questionImageFile: entry.questionImageFile,
+            questionType: entry.questionType,
+            choices: entry.choices.map(c => ({
+              choice: c.choiceText,
+              choiceImage: c.choiceImage,
+              choiceImageFile: c.choiceImageFile
+            })),
+            allowTextAnswer: entry.hasTextInput || false,
+            rows: entry.gridRows.map(r => r.rowText),
+            required: entry.isRequired,
+            questionNumber: entry.questionNumber,
+            followUp: entry.isFollowUp,
+          }))
+          newQuestionsPerSection.push({ 
+            sectionIndex: i, 
+            sectionId: current.id, 
+            newQuestions: extras 
+          })
+        }
+      }
+
+      onSubmit({
+        name: surveyName,
+        type: surveyType,
+        description: surveyDescription,
+        sections: legacySections,
+        editMetadata: {
+          newSections,
+          newQuestionsPerSection,
+          updatedQuestions: [], // TODO: Track question updates
+          updatedSectionTitles: [], // TODO: Track section title updates
+        }
+      })
+    }
   }
 
-  const currentQuestion = sections[selectedSection]?.surveyEntries[selectedQuestion]
+  const currentQuestion = sections[selectedSection]?.entries[selectedQuestion]
+
+  // Show loading state when loading survey details
+  if (isEditMode && isLoadingDetail) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading survey...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -676,11 +481,11 @@ export function CreateSurveyForm({
             <Button
               onClick={handleSubmit}
               className="bg-blue-600 text-white hover:bg-blue-700 px-6"
-              disabled={isSubmitting || isAddingSection}
+              disabled={isSubmitting || isAddingSection || createSurveyMutation.isPending}
             >
               {isEditMode 
                 ? (isAddingSection ? "Adding..." : "Save Changes")
-                : (isSubmitting ? "Creating..." : "Create Survey")
+                : (isSubmitting || createSurveyMutation.isPending ? "Creating..." : "Create Survey")
               }
             </Button>
           </div>
@@ -692,7 +497,7 @@ export function CreateSurveyForm({
         <div className="grid grid-cols-12 gap-8 max-w-full">
           {/* Left Sidebar - Navigation */}
           <div className="col-span-3">
-            <SurveyNavigation
+            <SurveyNavigationNew
               sections={sections}
               selectedSection={selectedSection}
               selectedQuestion={selectedQuestion}
@@ -739,13 +544,7 @@ export function CreateSurveyForm({
                       onUpdateQuestion={(updates) => updateQuestion(selectedSection, selectedQuestion, updates)}
                       isFirstInSection={selectedQuestion === 0}
                       isEditMode={isEditMode}
-                      surveyEntryId={
-                        isEditMode && 
-                        selectedSection < originalSectionsCount && 
-                        selectedQuestion < (originalQuestionCounts[selectedSection] || 0) 
-                          ? existingSectionsData?.sections[selectedSection]?.questions[selectedQuestion]?.id
-                          : undefined
-                      }
+                      surveyEntryId={currentQuestion.id}
                       onRefreshSurveyData={onRefreshSurveyData}
                     />
                   )
@@ -757,11 +556,115 @@ export function CreateSurveyForm({
           {/* Right Sidebar - Preview */}
           <div className="col-span-3">
             {editMode === 'question' && currentQuestion && (
-              <QuestionPreview question={currentQuestion} />
+              <QuestionPreviewNew question={currentQuestion} />
             )}
           </div>
         </div>
       </div>
     </div>
   )
+}
+
+// =============================================================================
+// New Navigation Component (adapts new types to existing SurveyNavigation)
+// =============================================================================
+
+function SurveyNavigationNew({
+  sections,
+  selectedSection,
+  selectedQuestion,
+  editMode,
+  surveyName,
+  surveyType,
+  isEditMode,
+  originalSectionsCount,
+  onSelectSurveySettings,
+  onSelectQuestion,
+  onUpdateSectionTitle,
+  onUpdateSectionDescription,
+  onDeleteSection,
+  onDeleteQuestion,
+  onAddQuestion,
+  onAddSection
+}: {
+  sections: SurveySectionForm[]
+  selectedSection: number
+  selectedQuestion: number
+  editMode: 'survey' | 'question'
+  surveyName: string
+  surveyType: SurveyType
+  isEditMode: boolean
+  originalSectionsCount: number
+  onSelectSurveySettings: () => void
+  onSelectQuestion: (sectionIndex: number, questionIndex: number) => void
+  onUpdateSectionTitle: (sectionIndex: number, title: string) => void
+  onUpdateSectionDescription: (sectionIndex: number, description: string) => void
+  onDeleteSection: (sectionIndex: number) => void
+  onDeleteQuestion: (sectionIndex: number, questionIndex: number) => void
+  onAddQuestion: (sectionIndex: number) => void
+  onAddSection: () => void
+}) {
+  // Convert new sections format to legacy format for existing SurveyNavigation
+  const legacySections: CreateSurveySection[] = sections.map(section => ({
+    title: section.title,
+    description: section.description,
+    surveyEntries: section.entries.map(entry => ({
+      question: entry.question,
+      questionImage: entry.questionImage,
+      questionType: entry.questionType,
+      choices: entry.choices.map(c => ({ choice: c.choiceText, choiceImage: c.choiceImage })),
+      allowTextAnswer: entry.hasTextInput || false,
+      rows: entry.gridRows.map(r => r.rowText),
+      required: entry.isRequired,
+      questionNumber: entry.questionNumber,
+      followUp: entry.isFollowUp,
+    }))
+  }))
+
+  return (
+    <SurveyNavigation
+      sections={legacySections}
+      selectedSection={selectedSection}
+      selectedQuestion={selectedQuestion}
+      editMode={editMode}
+      surveyName={surveyName}
+      surveyType={surveyType}
+      isEditMode={isEditMode}
+      originalSectionsCount={originalSectionsCount}
+      onSelectSurveySettings={onSelectSurveySettings}
+      onSelectQuestion={onSelectQuestion}
+      onUpdateSectionTitle={onUpdateSectionTitle}
+      onUpdateSectionDescription={onUpdateSectionDescription}
+      onDeleteSection={onDeleteSection}
+      onDeleteQuestion={onDeleteQuestion}
+      onAddQuestion={onAddQuestion}
+      onAddSection={onAddSection}
+    />
+  )
+}
+
+// =============================================================================
+// New Preview Component (adapts new types to existing QuestionPreview)
+// =============================================================================
+
+function QuestionPreviewNew({ question }: { question: SurveyEntryForm }) {
+  // Convert new question format to legacy format for existing QuestionPreview
+  const legacyQuestion: CreateSurveyEntry = {
+    question: question.question,
+    questionImage: question.questionImage,
+    questionImageFile: question.questionImageFile,
+    questionType: question.questionType,
+    choices: question.choices.map(c => ({
+      choice: c.choiceText,
+      choiceImage: c.choiceImage,
+      choiceImageFile: c.choiceImageFile
+    })),
+    allowTextAnswer: question.hasTextInput || false,
+    rows: question.gridRows.map(r => r.rowText),
+    required: question.isRequired,
+    questionNumber: question.questionNumber,
+    followUp: question.isFollowUp,
+  }
+
+  return <QuestionPreview question={legacyQuestion} />
 }
