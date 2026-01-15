@@ -9,8 +9,8 @@ import { Plus, Trash2 } from "lucide-react"
 import { 
   SurveyEntry, 
   QuestionType,
-  getDefaultQuestionFields,
-  validateSurveyEntry
+  getDefaultQuestionFieldsLegacy,
+  validateSurveyEntryLegacy
 } from "@/lib/hooks/useSurvey"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
@@ -43,18 +43,14 @@ export function AddQuestionForm({
   }
 
   const updateQuestionType = (questionType: QuestionType) => {
-    const defaults = getDefaultQuestionFields(questionType)
-    // Convert CreateSurveyChoice[] to string[] for SurveyEntry
-    const normalizedChoices = Array.isArray(defaults.choices) 
-      ? defaults.choices.map((c: any) => typeof c === 'string' ? c : c.choice || '') 
-      : []
+    const defaults = getDefaultQuestionFieldsLegacy(questionType)
     
     setQuestion(prev => ({ 
       ...prev, 
       questionType,
-      choices: normalizedChoices,
-      allowMultipleAnswers: defaults.allowTextAnswer ?? false,
-      rows: defaults.rows ?? []
+      choices: defaults.choices,
+      allowMultipleAnswers: questionType === 'CHECKBOX',
+      rows: defaults.rows
     }))
   }
 
@@ -109,7 +105,16 @@ export function AddQuestionForm({
   }
 
   const validateQuestion = () => {
-    const validation = validateSurveyEntry(question)
+    // Convert choices to string[] for legacy validation
+    const choicesAsStrings = question.choices.map(c => 
+      typeof c === 'string' ? c : c.choiceText || ''
+    )
+    const validation = validateSurveyEntryLegacy({
+      question: question.question,
+      questionType: question.questionType,
+      choices: choicesAsStrings,
+      rows: question.rows
+    })
     if (!validation.isValid) {
       toast.error(validation.errors[0])
       return false

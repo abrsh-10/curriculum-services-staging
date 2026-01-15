@@ -11,8 +11,8 @@ import {
   useDeleteSurveyEntry,
   SurveyEntry,
   QuestionType,
-  getDefaultQuestionFields,
-  validateSurveyEntry
+  getDefaultQuestionFieldsLegacy,
+  validateSurveyEntryLegacy
 } from "@/lib/hooks/useSurvey"
 import { SurveyDeleteDialog } from "./SurveyDeleteDialog"
 import { Label } from "@/components/ui/label"
@@ -80,13 +80,13 @@ export function SurveyQuestionManager({
   const handleEditSave = () => {
     if (!editingEntry) return
 
-    // Use the validation utility - convert EditingState to SurveyEntry format
-    const entryForValidation: SurveyEntry = {
-      ...editingEntry,
-      allowMultipleAnswers: editingEntry.questionType === 'CHECKBOX', // CHECKBOX allows multiple answers
-      id: editingEntry.entryId
-    }
-    const validation = validateSurveyEntry(entryForValidation)
+    // Use the legacy validation utility
+    const validation = validateSurveyEntryLegacy({
+      question: editingEntry.question,
+      questionType: editingEntry.questionType,
+      choices: editingEntry.choices,
+      rows: editingEntry.rows
+    })
     if (!validation.isValid) {
       // Show first error (validation utility already provides good error messages)
       return
@@ -161,18 +161,14 @@ export function SurveyQuestionManager({
   // New helper functions for additional fields
   const updateEditingQuestionType = (questionType: QuestionType) => {
     if (!editingEntry) return
-    const defaults = getDefaultQuestionFields(questionType)
-    // Convert CreateSurveyChoice[] to string[] for SurveyEntry
-    const normalizedChoices = Array.isArray(defaults.choices) 
-      ? defaults.choices.map((c: string | { choice: string }) => typeof c === 'string' ? c : c.choice || '') 
-      : []
+    const defaults = getDefaultQuestionFieldsLegacy(questionType)
     
     setEditingEntry({ 
       ...editingEntry, 
       questionType,
-      choices: normalizedChoices,
-      allowOtherAnswer: defaults.allowTextAnswer ?? false,
-      rows: defaults.rows ?? []
+      choices: defaults.choices,
+      allowOtherAnswer: defaults.allowTextAnswer,
+      rows: defaults.rows
     })
   }
 

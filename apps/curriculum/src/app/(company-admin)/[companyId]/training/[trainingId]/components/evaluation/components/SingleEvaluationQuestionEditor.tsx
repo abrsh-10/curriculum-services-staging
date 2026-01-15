@@ -164,11 +164,13 @@ export function SingleEvaluationQuestionEditor({
     return {
       question: entry.question,
       questionImage: entry.questionImage || undefined,
+      questionImageFile: entry.questionImageFile,
       questionType: entry.questionType,
       choices: (entry.choices || []).map((c) => ({
         clientId: c.clientId,
         choiceText: c.choiceText,
-        choiceImage: c.choiceImage || undefined
+        choiceImage: c.choiceImage || undefined,
+        choiceImageFile: c.choiceImageFile
       })),
       isFollowUp: !!entry.isFollowUp,
       parentQuestionId: opts?.parentQuestionId,
@@ -576,11 +578,13 @@ export function SingleEvaluationQuestionEditor({
                                     clientId: follow.clientId,
                                     question: follow.question,
                                     questionImage: follow.questionImage,
+                                    questionImageFile: follow.questionImageFile,
                                     questionType: follow.questionType,
                                     choices: (follow.choices || []).map((fChoice) => ({
                                       clientId: fChoice.clientId,
                                       choiceText: fChoice.choiceText,
-                                      choiceImage: fChoice.choiceImage
+                                      choiceImage: fChoice.choiceImage,
+                                      choiceImageFile: fChoice.choiceImageFile
                                     })),
                                     isFollowUp: true,
                                     parentQuestionClientId: question.clientId,

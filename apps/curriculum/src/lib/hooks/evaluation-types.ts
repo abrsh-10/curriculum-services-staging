@@ -51,13 +51,14 @@ export interface EvaluationChoicePayload {
   clientId: string;
   choiceText: string;
   choiceImage?: string;
-  // Note: Files are handled when building FormData; not part of JSON payload
+  choiceImageFile?: File; // For FormData uploads
 }
 
 export interface EvaluationEntryPayload {
   clientId: string;
   question: string;
   questionImage?: string;
+  questionImageFile?: File; // For FormData uploads
   questionType: EvaluationQuestionType;
   choices: EvaluationChoicePayload[];
   
