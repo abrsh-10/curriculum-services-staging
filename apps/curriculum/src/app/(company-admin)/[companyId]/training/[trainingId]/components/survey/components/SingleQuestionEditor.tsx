@@ -6,18 +6,40 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Plus, Trash2, Send, X } from "lucide-react"
-import { CreateSurveyEntry, QuestionType, getDefaultQuestionFields, useAddChoice, useRemoveChoice } from "@/lib/hooks/useSurvey"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react"
 import { FileUpload } from "@/components/ui/file-upload"
 import { ChoiceDeleteDialog } from "./ChoiceDeleteDialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { 
+  SurveyEntryForm, 
+  SurveyChoiceForm, 
+  SurveyQuestionType,
+  SurveyGridRowForm,
+  getDefaultQuestionFields,
+  emptyChoice,
+  createEmptyFollowUp,
+  useDeleteChoice 
+} from "@/lib/hooks/useSurvey"
 
 interface SingleQuestionEditorProps {
-  question: CreateSurveyEntry
-  onUpdateQuestion: (updates: Partial<CreateSurveyEntry>) => void
+  question: SurveyEntryForm
+  onUpdateQuestion: (updates: Partial<SurveyEntryForm>) => void
   isFirstInSection?: boolean
   isEditMode?: boolean
-  surveyEntryId?: string // Required when in edit mode for immediate choice add/remove operations
-  onRefreshSurveyData?: () => void // For refreshing data after API operations
+  surveyEntryId?: string
+  onRefreshSurveyData?: () => void
+  onSaveQuestion?: () => Promise<void>  // Callback to save this specific question
+  isSavingQuestion?: boolean
 }
 
 export function SingleQuestionEditor({ 
@@ -26,185 +48,235 @@ export function SingleQuestionEditor({
   isFirstInSection = false, 
   isEditMode = false, 
   surveyEntryId,
-  onRefreshSurveyData
+  onRefreshSurveyData,
+  onSaveQuestion,
+  isSavingQuestion = false
 }: SingleQuestionEditorProps) {
-  // API hooks for immediate choice add/remove operations only
-  const { addChoice, isLoading: isAddingChoice } = useAddChoice()
-  const { removeChoice, isLoading: isRemovingChoice } = useRemoveChoice()
+  // API hooks for choice delete operations
+  const { deleteChoice, isLoading: isDeletingChoice } = useDeleteChoice()
   
-  // Add choice input state
-  const [showAddChoiceInput, setShowAddChoiceInput] = useState(false)
-  const [newChoiceText, setNewChoiceText] = useState("")
-  const [newChoiceImageFile, setNewChoiceImageFile] = useState<File | undefined>(undefined)
+  // UI state
+  const [expandedFollowUps, setExpandedFollowUps] = useState<Record<string, boolean>>({})
   
   // Delete dialog state
   const [deleteDialog, setDeleteDialog] = useState<{
     isOpen: boolean;
     choiceIndex: number;
     choiceText: string;
-    choiceOrder: string;
+    choiceId: string;
   }>({
     isOpen: false,
     choiceIndex: -1,
     choiceText: "",
-    choiceOrder: ""
+    choiceId: ""
   });
 
+  // Question type change warning dialog state
+  const [typeChangeDialog, setTypeChangeDialog] = useState<{
+    isOpen: boolean;
+    newType: SurveyQuestionType | null;
+    existingChoicesCount: number;
+    existingGridRowsCount: number;
+  }>({
+    isOpen: false,
+    newType: null,
+    existingChoicesCount: 0,
+    existingGridRowsCount: 0
+  });
 
-  const handleQuestionTypeChange = (newType: QuestionType) => {
-    const defaults = getDefaultQuestionFields(newType)
-    const normalizedChoices = Array.isArray(defaults.choices)
-      ? defaults.choices.map((c, i) => {
-          // Clear images when switching question type
-          return { 
-            choice: c.choice || "", 
-            choiceImageFile: undefined,
-            choiceImage: undefined 
-          }
-        })
-      : []
+  // Question type change handler - with warning if existing choices will be wiped
+  const handleQuestionTypeChange = (newType: SurveyQuestionType) => {
+    // Check if there are existing choices/gridRows with IDs (saved to backend)
+    const existingChoicesWithIds = question.choices.filter(c => c.id).length
+    const existingGridRowsWithIds = question.gridRows.filter(r => r.id).length
     
-    // Always use local state - API call will happen when save is clicked
+    // If changing type and there are saved choices/gridRows, show warning
+    if (isEditMode && (existingChoicesWithIds > 0 || existingGridRowsWithIds > 0)) {
+      setTypeChangeDialog({
+        isOpen: true,
+        newType,
+        existingChoicesCount: existingChoicesWithIds,
+        existingGridRowsCount: existingGridRowsWithIds
+      })
+      return
+    }
+    
+    // No warning needed - proceed with type change
+    applyQuestionTypeChange(newType)
+  }
+
+  // Apply the type change (called directly or after confirmation)
+  const applyQuestionTypeChange = (newType: SurveyQuestionType) => {
+    const defaults = getDefaultQuestionFields(newType)
+    
     onUpdateQuestion({
       questionType: newType,
-      choices: normalizedChoices,
-      rows: defaults.rows || [],
-      allowTextAnswer: defaults.allowTextAnswer ?? false,
-      // Also clear question image when switching type
+      choices: defaults.choices || [],
+      gridRows: defaults.gridRows || [],
       questionImageFile: undefined,
       questionImage: undefined,
-      // GRID questions can be follow-ups, so don't clear follow-up settings when switching to GRID
     })
   }
 
-  const handleChoiceChange = (index: number, value: string) => {
-    const newChoices = question.choices.map((c, i) => i === index ? { ...c, choice: value } : c)
-    onUpdateQuestion({ choices: newChoices })
-  }
-
-  const handleShowAddChoiceInput = () => {
-    setShowAddChoiceInput(true)
-    setNewChoiceText("")
-    setNewChoiceImageFile(undefined)
-  }
-
-  const handleCancelAddChoice = () => {
-    setShowAddChoiceInput(false)
-    setNewChoiceText("")
-    setNewChoiceImageFile(undefined)
-  }
-
-  const handleAddChoiceDirectly = () => {
-    // Old behavior for create mode - directly add empty choice
-    const newChoices = [...question.choices, { choice: "" }]
-    onUpdateQuestion({ choices: newChoices })
-  }
-
-  const handleSubmitNewChoice = () => {
-    // Require either text or image
-    if (!newChoiceText.trim() && !newChoiceImageFile) return
-    
-    if (isEditMode && surveyEntryId) {
-      // Use API call for existing questions only
-      addChoice({
-        surveyEntryId,
-        choiceData: {
-          choice: newChoiceText.trim(),
-          choiceImage: undefined,
-          choiceImageFile: newChoiceImageFile
-        }
-      }, {
-        onSuccess: () => {
-          setShowAddChoiceInput(false)
-          setNewChoiceText("")
-          setNewChoiceImageFile(undefined)
-          // Refresh survey data to update UI
-          onRefreshSurveyData?.()
-        },
-        onError: () => {
-          // Keep input open on error so user can retry
-        }
-      })
-    } else {
-      // Use local state for new questions during creation
-      onUpdateQuestion({ 
-        choices: [...question.choices, { 
-          choice: newChoiceText.trim() || "", // Ensure we have a string even if empty for image-only choices
-          choiceImage: undefined,
-          choiceImageFile: newChoiceImageFile
-        }] 
-      })
-      setShowAddChoiceInput(false)
-      setNewChoiceText("")
-      setNewChoiceImageFile(undefined)
+  // Handle type change confirmation
+  const handleConfirmTypeChange = () => {
+    if (typeChangeDialog.newType) {
+      applyQuestionTypeChange(typeChangeDialog.newType)
     }
+    setTypeChangeDialog({ isOpen: false, newType: null, existingChoicesCount: 0, existingGridRowsCount: 0 })
+  }
+
+  // Choice management
+  const handleChoiceChange = (index: number, value: string) => {
+    const newChoices = question.choices.map((c, i) => 
+      i === index ? { ...c, choiceText: value } : c
+    )
+    onUpdateQuestion({ choices: newChoices })
+  }
+
+  const updateChoice = (choiceIndex: number, updates: Partial<SurveyChoiceForm>) => {
+    onUpdateQuestion({
+      choices: question.choices.map((c, i) => 
+        i === choiceIndex ? { ...c, ...updates } : c
+      )
+    })
+  }
+
+  // Always add choices locally - parent form handles when to use which API on save
+  const handleAddChoice = () => {
+    const newChoice = emptyChoice(question.choices.length)
+    onUpdateQuestion({ choices: [...question.choices, newChoice] })
   }
 
   const handleRemoveChoiceClick = (index: number) => {
     if (question.choices.length <= 2) return
     
     const choice = question.choices[index]
-    const choiceText = choice?.choice || ""
-    // Calculate order based on index (A, B, C, etc.)
-    const choiceOrder = String.fromCharCode(65 + index)
+    const choiceText = choice?.choiceText || ""
     
-    if (isEditMode && surveyEntryId) {
-      // Show delete dialog for existing questions - only API, no local fallback
+    if (isEditMode && surveyEntryId && choice?.id) {
+      // Show confirmation dialog for existing choices (have server ID)
       setDeleteDialog({
         isOpen: true,
         choiceIndex: index,
         choiceText,
-        choiceOrder
+        choiceId: choice.id
       })
     } else {
-      // Direct removal for new questions during creation (local state)
+      // Just remove locally for new choices
       onUpdateQuestion({ choices: question.choices.filter((_, i) => i !== index) })
     }
   }
 
   const handleConfirmRemoveChoice = () => {
-    if (isEditMode && surveyEntryId) {
-      // Use API call for existing questions - dialog stays open until success
-      removeChoice({
-        surveyEntryId,
-        order: deleteDialog.choiceOrder
-      }, {
+    if (isEditMode && deleteDialog.choiceId) {
+      deleteChoice(deleteDialog.choiceId, {
         onSuccess: () => {
-          // Only close dialog and reset state on success
-          setDeleteDialog({ isOpen: false, choiceIndex: -1, choiceText: "", choiceOrder: "" })
-          // Refresh survey data to update UI
+          setDeleteDialog({ isOpen: false, choiceIndex: -1, choiceText: "", choiceId: "" })
           onRefreshSurveyData?.()
         },
-        onError: () => {
-          // Keep dialog open on error so user can retry
-        }
       })
     }
   }
 
-  const handleRowChange = (index: number, value: string) => {
-    const newRows = [...question.rows]
-    newRows[index] = value
-    onUpdateQuestion({ rows: newRows })
-  }
-
-  const addRow = () => {
-    onUpdateQuestion({ rows: [...question.rows, ""] })
-  }
-
-  const removeRow = (index: number) => {
-    if (question.rows.length > 2) {
-      onUpdateQuestion({ rows: question.rows.filter((_, i) => i !== index) })
+  // Follow-up question management (NEW - like Evaluation)
+  const toggleChoiceFollowUp = (choiceIndex: number, hasFollowUp: boolean) => {
+    const choice = question.choices[choiceIndex]
+    const updatedChoice: SurveyChoiceForm = {
+      ...choice,
+      hasFollowUp,
+      followUpQuestion: hasFollowUp && !choice.followUpQuestion 
+        ? createEmptyFollowUp(question.clientId, choice.clientId)
+        : hasFollowUp 
+          ? choice.followUpQuestion 
+          : undefined
+    }
+    
+    updateChoice(choiceIndex, updatedChoice)
+    
+    if (hasFollowUp) {
+      setExpandedFollowUps(prev => ({ ...prev, [choice.clientId]: true }))
     }
   }
 
+  const updateFollowUpQuestion = (choiceIndex: number, updates: Partial<SurveyEntryForm>) => {
+    const choice = question.choices[choiceIndex]
+    if (!choice.followUpQuestion) return
+    
+    updateChoice(choiceIndex, {
+      followUpQuestion: {
+        ...choice.followUpQuestion,
+        ...updates
+      }
+    })
+  }
+
+  const addFollowUpChoice = (choiceIndex: number) => {
+    const choice = question.choices[choiceIndex]
+    if (!choice.followUpQuestion) return
+    
+    const newFollowUpChoice = emptyChoice(choice.followUpQuestion.choices.length)
+    
+    updateFollowUpQuestion(choiceIndex, {
+      choices: [...choice.followUpQuestion.choices, newFollowUpChoice]
+    })
+  }
+
+  const removeFollowUpChoice = (choiceIndex: number, followUpChoiceIndex: number) => {
+    const choice = question.choices[choiceIndex]
+    if (!choice.followUpQuestion || choice.followUpQuestion.choices.length <= 2) return
+    
+    updateFollowUpQuestion(choiceIndex, {
+      choices: choice.followUpQuestion.choices.filter((_, i) => i !== followUpChoiceIndex)
+    })
+  }
+
+  const updateFollowUpChoice = (choiceIndex: number, followUpChoiceIndex: number, updates: Partial<SurveyChoiceForm>) => {
+    const choice = question.choices[choiceIndex]
+    if (!choice.followUpQuestion) return
+    
+    updateFollowUpQuestion(choiceIndex, {
+      choices: choice.followUpQuestion.choices.map((fc, i) => 
+        i === followUpChoiceIndex ? { ...fc, ...updates } : fc
+      )
+    })
+  }
+
+  // Grid row management
+  const handleRowChange = (index: number, value: string) => {
+    const newRows = question.gridRows.map((r, i) => 
+      i === index ? { ...r, rowText: value } : r
+    )
+    onUpdateQuestion({ gridRows: newRows })
+  }
+
+  const addRow = () => {
+    const newRow: SurveyGridRowForm = {
+      rowNumber: question.gridRows.length + 1,
+      rowText: ""
+    }
+    onUpdateQuestion({ gridRows: [...question.gridRows, newRow] })
+  }
+
+  const removeRow = (index: number) => {
+    if (question.gridRows.length > 2) {
+      onUpdateQuestion({ gridRows: question.gridRows.filter((_, i) => i !== index) })
+    }
+  }
+
+  const shouldShowChoices = question.questionType === "RADIO" || question.questionType === "CHECKBOX" || question.questionType === "GRID"
+  const canHaveFollowUp = question.questionType === "RADIO" || question.questionType === "CHECKBOX"
+
   return (
     <div className="space-y-6">
-      {/* Image for question */}
+      {/* Question Image */}
       <div>
         <Label className="text-sm font-medium">Question Image</Label>
         <div className="mt-2 flex items-center gap-3">
-          <FileUpload accept="image/*" onChange={(file) => onUpdateQuestion({ questionImageFile: file || undefined })} />
+          <FileUpload 
+            accept="image/*" 
+            onChange={(file) => onUpdateQuestion({ questionImageFile: file || undefined })} 
+          />
           {(question.questionImageFile || question.questionImage) && (
             <div className="flex items-center gap-3">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -237,8 +309,10 @@ export function SingleQuestionEditor({
           )}
         </div>
       </div>
+
+      {/* Question Text */}
       <div>
-        <Label htmlFor="questionText" className="text-sm font-medium">Question Text</Label>
+        <Label htmlFor="questionText" className="text-sm font-medium">Question Text *</Label>
         <Textarea
           id="questionText"
           value={question.question}
@@ -249,10 +323,11 @@ export function SingleQuestionEditor({
         />
       </div>
 
+      {/* Question Type */}
       <div>
-        <Label className="text-sm font-medium">Question Type</Label>
+        <Label className="text-sm font-medium">Question Type *</Label>
         <div className="grid grid-cols-2 gap-3 mt-2">
-          {(['TEXT', 'RADIO', 'CHECKBOX', 'GRID'] as QuestionType[]).map((type) => (
+          {(['TEXT', 'RADIO', 'CHECKBOX', 'GRID'] as SurveyQuestionType[]).map((type) => (
             <Button
               key={type}
               variant={question.questionType === type ? "default" : "outline"}
@@ -270,6 +345,9 @@ export function SingleQuestionEditor({
                   src={`/question-type-${type.toLowerCase()}.svg`}
                   alt={`${type} icon`}
                   className="w-4 h-4"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none'
+                  }}
                 />
                 {type}
               </div>
@@ -278,179 +356,306 @@ export function SingleQuestionEditor({
         </div>
       </div>
 
-      {(question.questionType === 'RADIO' || question.questionType === 'CHECKBOX' || question.questionType === 'GRID') && (
-        <div>
-          <Label className="text-sm font-medium">
-            {question.questionType === 'GRID' ? 'Column Options' : 'Answer Options'}
-          </Label>
-          <div className="space-y-2 mt-2">
-            {(question.choices || []).map((choice, index) => (
-              <div key={index} className="flex items-center gap-2">
-                <Input
-                  value={choice.choice ?? ""}
-                  onChange={(e) => handleChoiceChange(index, e.target.value)}
-                  placeholder={`Option ${index + 1}`}
-                  className="flex-1"
-                />
-                <div className="flex items-center gap-2">
-                  <FileUpload
-                    accept="image/*"
-                    onChange={(file) => {
-                      const newChoices = question.choices.map((c, i) => i === index ? { ...c, choiceImageFile: file || undefined } : c);
-                      onUpdateQuestion({ choices: newChoices });
-                    }}
-                  />
-                  {(choice.choiceImageFile || choice.choiceImage) && (
-                    <div className="flex items-center gap-2">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img 
-                        src={choice.choiceImageFile ? URL.createObjectURL(choice.choiceImageFile) : choice.choiceImage} 
-                        alt="choice" 
-                        className="h-10 w-10 object-cover rounded border" 
-                      />
-                      <button
-                        type="button"
-                        className="text-red-600 text-xs"
-                        onClick={() => onUpdateQuestion({ 
-                          choices: question.choices.map((c, i) => i === index ? { 
-                            ...c, 
-                            choiceImageFile: undefined, 
-                            choiceImage: c.choiceImageFile ? c.choiceImage : undefined 
-                          } : c) 
-                        })}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  )}
-                </div>
-                {question.choices.length > 2 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleRemoveChoiceClick(index)}
-                    disabled={isRemovingChoice}
-                    className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Remove this choice"
-                  >
-                    {isRemovingChoice ? (
-                      <div className="animate-spin rounded-full h-4 w-4 border-b border-red-500"></div>
-                    ) : (
-                      <Trash2 className="h-4 w-4" />
-                    )}
-                  </Button>
-                )}
-              </div>
-            ))}
-            
-            {/* Add choice input area - only for existing questions in edit mode */}
-            {isEditMode && surveyEntryId && showAddChoiceInput ? (
-              <div className="space-y-2 p-3 border-2 border-dashed border-blue-300 rounded-lg bg-blue-50">
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={newChoiceText}
-                    onChange={(e) => setNewChoiceText(e.target.value)}
-                    placeholder="Enter choice text (optional if adding image)"
-                    className="flex-1"
-                    onKeyPress={(e) => e.key === 'Enter' && (newChoiceText.trim() || newChoiceImageFile) && handleSubmitNewChoice()}
-                  />
-                  <FileUpload
-                    accept="image/*"
-                    onChange={(file) => setNewChoiceImageFile(file || undefined)}
-                  />
-                </div>
-                
-                {/* Show image preview if selected */}
-                {newChoiceImageFile && (
-                  <div className="flex items-center gap-2 p-2 bg-white rounded border">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img 
-                      src={URL.createObjectURL(newChoiceImageFile)} 
-                      alt="choice preview" 
-                      className="h-12 w-12 object-cover rounded border" 
-                    />
-                    <div className="flex-1 text-xs text-gray-600">
-                      <div className="font-medium truncate">{newChoiceImageFile.name}</div>
-                      <div>{(newChoiceImageFile.size / 1024).toFixed(1)} KB</div>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setNewChoiceImageFile(undefined)}
-                      disabled={isAddingChoice}
-                      className="text-red-500 hover:text-red-700"
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-600">
-                    {newChoiceText.trim() && newChoiceImageFile 
-                      ? "Text + Image choice" 
-                      : newChoiceImageFile 
-                        ? "Image-only choice" 
-                        : newChoiceText.trim() 
-                          ? "Text-only choice" 
-                          : "Add text or image"}
-                  </span>
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      onClick={handleSubmitNewChoice}
-                      disabled={(!newChoiceText.trim() && !newChoiceImageFile) || isAddingChoice}
-                      className="bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-                    >
-                      {isAddingChoice ? (
-                        <div className="flex items-center gap-2">
-                          <div className="animate-spin rounded-full h-3 w-3 border-b border-white"></div>
-                          <span>Adding...</span>
-                        </div>
-                      ) : (
-                        <Send className="h-4 w-4" />
-                      )}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleCancelAddChoice}
-                      disabled={isAddingChoice}
-                      className="text-gray-500 hover:text-gray-700"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={isEditMode && surveyEntryId ? handleShowAddChoiceInput : handleAddChoiceDirectly}
-                className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Option
-              </Button>
-            )}
+      {/* Follow-up indicator (for existing follow-up questions) */}
+      {question.isFollowUp && (
+        <div className="border rounded-lg p-3 bg-orange-50">
+          <div className="text-sm text-orange-700">
+            📎 This is a follow-up question that will only appear when the user selects specific choices from the parent question.
           </div>
         </div>
       )}
 
+      {/* Answer Options (for RADIO, CHECKBOX, GRID) */}
+      {shouldShowChoices && (
+        <div>
+          <Label className="text-sm font-medium">
+            {question.questionType === 'GRID' ? 'Column Options *' : 'Answer Options *'}
+          </Label>
+          <div className="space-y-4 mt-2">
+            {(question.choices || []).map((choice, choiceIndex) => (
+              <div key={choice.clientId} className="border rounded-lg p-4 space-y-3">
+                {/* Choice Text and Image */}
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 text-sm font-medium text-gray-500 min-w-[24px]">
+                    {choice.choiceOrder || String.fromCharCode(65 + choiceIndex)}.
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        value={choice.choiceText ?? ""}
+                        onChange={(e) => handleChoiceChange(choiceIndex, e.target.value)}
+                        placeholder={`Option ${choiceIndex + 1}`}
+                        className="flex-1"
+                      />
+                      <FileUpload
+                        accept="image/*"
+                        onChange={(file) => updateChoice(choiceIndex, { choiceImageFile: file || undefined })}
+                      />
+                    </div>
+                    
+                    {/* Choice Image Preview */}
+                    {(choice.choiceImageFile || choice.choiceImage) && (
+                      <div className="flex items-center gap-2 mt-2">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img 
+                          src={choice.choiceImageFile ? URL.createObjectURL(choice.choiceImageFile) : choice.choiceImage} 
+                          alt={`choice ${choiceIndex + 1}`} 
+                          className="h-10 w-10 object-cover rounded border" 
+                        />
+                        <button
+                          type="button"
+                          className="text-red-600 text-xs"
+                          onClick={() => updateChoice(choiceIndex, { 
+                            choiceImageFile: undefined, 
+                            choiceImage: choice.choiceImageFile ? choice.choiceImage : undefined 
+                          })}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Remove Choice */}
+                  {question.choices.length > 2 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRemoveChoiceClick(choiceIndex)}
+                      disabled={isDeletingChoice}
+                      className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50"
+                    >
+                      {isDeletingChoice ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-b border-red-500" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </Button>
+                  )}
+                </div>
+
+                {/* Follow-up Question Toggle (Only for RADIO/CHECKBOX) */}
+                {canHaveFollowUp && (
+                  <div className="border-t border-gray-200 pt-3 mt-2">
+                    <div className="flex items-center justify-between bg-amber-50 p-2 rounded-lg border border-amber-200">
+                      <div className="flex items-center space-x-2">
+                        <Checkbox
+                          id={`followup-${choice.clientId}`}
+                          checked={choice.hasFollowUp || false}
+                          onCheckedChange={(checked) => toggleChoiceFollowUp(choiceIndex, !!checked)}
+                        />
+                        <Label htmlFor={`followup-${choice.clientId}`} className="text-sm font-medium text-amber-800 cursor-pointer">
+                          🔗 Add follow-up question for this choice
+                        </Label>
+                        {choice.hasFollowUp && (
+                          <span className="text-xs bg-amber-200 text-amber-800 px-2 py-1 rounded ml-2 font-medium">
+                            Follow-up Active
+                          </span>
+                        )}
+                      </div>
+                      
+                      {choice.hasFollowUp && choice.followUpQuestion && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setExpandedFollowUps(prev => ({ 
+                            ...prev, 
+                            [choice.clientId]: !prev[choice.clientId] 
+                          }))}
+                          className="flex items-center gap-1 text-amber-700 hover:text-amber-900 hover:bg-amber-100"
+                        >
+                          {expandedFollowUps[choice.clientId] ? 
+                            <ChevronDown className="h-4 w-4" /> : 
+                            <ChevronRight className="h-4 w-4" />
+                          }
+                          {expandedFollowUps[choice.clientId] ? 'Collapse' : 'Expand'}
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* Follow-up Question Editor */}
+                    {choice.hasFollowUp && choice.followUpQuestion && expandedFollowUps[choice.clientId] && (
+                      <div className="mt-4 p-4 bg-blue-50 border-l-4 border-blue-400 rounded-r-lg">
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-blue-500">➜</span>
+                            <span className="text-sm font-medium text-blue-800">
+                              Follow-up for &quot;{choice.choiceText || `Option ${choiceIndex + 1}`}&quot;
+                            </span>
+                          </div>
+
+                          {/* Follow-up Question Text */}
+                          <div>
+                            <Label className="text-sm font-medium text-gray-700">Question *</Label>
+                            <div className="flex items-start gap-2 mt-1">
+                              <Textarea
+                                value={choice.followUpQuestion.question}
+                                onChange={(e) => updateFollowUpQuestion(choiceIndex, { question: e.target.value })}
+                                placeholder="Enter follow-up question"
+                                className="flex-1"
+                                rows={2}
+                              />
+                              <FileUpload
+                                accept="image/*"
+                                onChange={(file) => updateFollowUpQuestion(choiceIndex, { questionImageFile: file || undefined })}
+                              />
+                            </div>
+                            
+                            {/* Follow-up Question Image Preview */}
+                            {(choice.followUpQuestion.questionImageFile || choice.followUpQuestion.questionImage) && (
+                              <div className="flex items-center gap-2 mt-2">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img 
+                                  src={choice.followUpQuestion.questionImageFile 
+                                    ? URL.createObjectURL(choice.followUpQuestion.questionImageFile) 
+                                    : choice.followUpQuestion.questionImage} 
+                                  alt="follow-up question" 
+                                  className="h-12 w-12 object-cover rounded border" 
+                                />
+                                <button
+                                  type="button"
+                                  className="text-red-600 text-xs"
+                                  onClick={() => updateFollowUpQuestion(choiceIndex, { 
+                                    questionImageFile: undefined, 
+                                    questionImage: undefined 
+                                  })}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Follow-up Question Type */}
+                          <div>
+                            <Label className="text-sm font-medium text-gray-700">Question Type</Label>
+                            <Select
+                              value={choice.followUpQuestion.questionType}
+                              onValueChange={(value) => {
+                                const defaults = getDefaultQuestionFields(value as SurveyQuestionType)
+                                updateFollowUpQuestion(choiceIndex, { 
+                                  questionType: value as SurveyQuestionType,
+                                  choices: defaults.choices || [],
+                                  gridRows: defaults.gridRows || []
+                                })
+                              }}
+                            >
+                              <SelectTrigger className="mt-1">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="TEXT">Text Response</SelectItem>
+                                <SelectItem value="RADIO">Single Choice</SelectItem>
+                                <SelectItem value="CHECKBOX">Multiple Choice</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {/* Follow-up Required */}
+                          <div className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`followup-required-${choice.clientId}`}
+                              checked={choice.followUpQuestion.isRequired}
+                              onCheckedChange={(checked) => updateFollowUpQuestion(choiceIndex, { isRequired: !!checked })}
+                            />
+                            <Label htmlFor={`followup-required-${choice.clientId}`} className="text-sm text-gray-600">
+                              Required question
+                            </Label>
+                          </div>
+
+                          {/* Follow-up Choices (if RADIO or CHECKBOX) */}
+                          {(choice.followUpQuestion.questionType === "RADIO" || choice.followUpQuestion.questionType === "CHECKBOX") && (
+                            <div>
+                              <div className="flex items-center justify-between mb-2">
+                                <Label className="text-sm font-medium text-gray-700">Answer Choices</Label>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => addFollowUpChoice(choiceIndex)}
+                                  className="flex items-center gap-1"
+                                >
+                                  <Plus className="h-3 w-3" />
+                                  Add Choice
+                                </Button>
+                              </div>
+                              
+                              <div className="space-y-2">
+                                {(choice.followUpQuestion.choices || []).map((followUpChoice, fci) => (
+                                  <div key={followUpChoice.clientId} className="flex items-center gap-2 bg-white rounded-lg p-2 border border-blue-200">
+                                    <span className="text-xs text-gray-500 min-w-[20px]">
+                                      {followUpChoice.choiceOrder || String.fromCharCode(65 + fci)}.
+                                    </span>
+                                    <Input
+                                      value={followUpChoice.choiceText}
+                                      onChange={(e) => updateFollowUpChoice(choiceIndex, fci, { choiceText: e.target.value })}
+                                      placeholder={`Option ${fci + 1}`}
+                                      className="flex-1"
+                                    />
+                                    <FileUpload
+                                      accept="image/*"
+                                      onChange={(file) => updateFollowUpChoice(choiceIndex, fci, { choiceImageFile: file || undefined })}
+                                    />
+                                    {(choice.followUpQuestion?.choices || []).length > 2 && (
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => removeFollowUpChoice(choiceIndex, fci)}
+                                        className="text-red-500 hover:text-red-700 p-1 h-8 w-8"
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </Button>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+            
+            {/* Add choice button - always adds locally, parent form handles API calls on save */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleAddChoice}
+              className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add Option
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Grid Rows (for GRID questions) */}
       {question.questionType === 'GRID' && (
         <div>
-          <Label className="text-sm font-medium">Row Options</Label>
+          <Label className="text-sm font-medium">Row Options *</Label>
           <div className="space-y-2 mt-2">
-            {question.rows.map((row, index) => (
+            {question.gridRows.map((row, index) => (
               <div key={index} className="flex items-center gap-2">
+                <span className="text-sm text-gray-500 min-w-[24px]">{row.rowNumber || index + 1}.</span>
                 <Input
-                  value={row}
+                  value={row.rowText}
                   onChange={(e) => handleRowChange(index, e.target.value)}
                   placeholder={`Row ${index + 1}`}
                   className="flex-1"
                 />
-                {question.rows.length > 2 && (
+                <FileUpload
+                  accept="image/*"
+                  onChange={(file) => {
+                    const newRows = question.gridRows.map((r, i) => 
+                      i === index ? { ...r, rowImageFile: file || undefined } : r
+                    )
+                    onUpdateQuestion({ gridRows: newRows })
+                  }}
+                />
+                {question.gridRows.length > 2 && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -475,68 +680,121 @@ export function SingleQuestionEditor({
         </div>
       )}
 
-      <div className="flex items-center space-x-2">
-        <Checkbox
-          id="required"
-          checked={question.required}
-          onCheckedChange={(checked) => onUpdateQuestion({ required: !!checked })}
-        />
-        <Label htmlFor="required" className="text-sm font-medium">
-          Required question
-        </Label>
-      </div>
-
-      {/* Follow-up configuration (hidden for first question in a section only) */}
-      {!isFirstInSection && (
-        <div className="space-y-2">
+      {/* Question Options (only for RADIO/CHECKBOX) */}
+      {canHaveFollowUp && (
+        <div className="space-y-3 p-4 bg-gray-50 rounded-lg border">
+          <Label className="text-sm font-medium text-gray-700">Question Options</Label>
+          
+          {/* Has Text Input / Allow Other */}
           <div className="flex items-center space-x-2">
             <Checkbox
-              id="followUp"
-              checked={!!question.followUp}
-              onCheckedChange={(checked) => onUpdateQuestion({ followUp: !!checked })}
+              id="hasTextInput"
+              checked={question.hasTextInput || false}
+              onCheckedChange={(checked) => onUpdateQuestion({ hasTextInput: !!checked })}
             />
-            <Label htmlFor="followUp" className="text-sm font-medium">
-              This is a follow-up question
+            <Label htmlFor="hasTextInput" className="text-sm text-gray-600 cursor-pointer">
+              Allow &quot;Other&quot; text input (adds a free-text option at the end)
             </Label>
           </div>
-          {question.followUp && (
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label className="text-sm font-medium">Parent Question Number</Label>
-                <Input
-                  value={typeof question.parentQuestionNumber === 'number' ? String(question.parentQuestionNumber) : ""}
-                  onChange={(e) => onUpdateQuestion({ parentQuestionNumber: Number(e.target.value) || 0 })}
-                  placeholder="e.g., 1"
-                />
-              </div>
-              <div>
-                <Label className="text-sm font-medium">Parent Choice (letter)</Label>
-                <Input
-                  value={(question.parentChoice || "").toString().toUpperCase()}
-                  onChange={(e) => {
-                    const v = (e.target.value || "").toUpperCase();
-                    // keep only first A-Z
-                    const letter = v.replace(/[^A-Z]/g, "").slice(0, 1);
-                    onUpdateQuestion({ parentChoice: letter });
-                  }}
-                  placeholder="A, B, C, ..."
-                />
-                <p className="text-[10px] text-gray-500 mt-1">Match by option order: A = first choice, B = second, etc.</p>
-              </div>
-            </div>
-          )}
+
+          {/* Required Question */}
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="required"
+              checked={question.isRequired}
+              onCheckedChange={(checked) => onUpdateQuestion({ isRequired: !!checked })}
+            />
+            <Label htmlFor="required" className="text-sm text-gray-600 cursor-pointer">
+              Required question
+            </Label>
+          </div>
+        </div>
+      )}
+
+      {/* Required Question (for TEXT and GRID - no hasTextInput option) */}
+      {!canHaveFollowUp && (
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="required"
+            checked={question.isRequired}
+            onCheckedChange={(checked) => onUpdateQuestion({ isRequired: !!checked })}
+          />
+          <Label htmlFor="required" className="text-sm font-medium">
+            Required question
+          </Label>
         </div>
       )}
 
       {/* Choice Delete Confirmation Dialog */}
       <ChoiceDeleteDialog
         isOpen={deleteDialog.isOpen}
-        onClose={() => setDeleteDialog({ isOpen: false, choiceIndex: -1, choiceText: "", choiceOrder: "" })}
+        onClose={() => setDeleteDialog({ isOpen: false, choiceIndex: -1, choiceText: "", choiceId: "" })}
         onConfirm={handleConfirmRemoveChoice}
         choiceText={deleteDialog.choiceText}
-        choiceOrder={deleteDialog.choiceOrder}
-        isDeleting={isRemovingChoice}
+        isDeleting={isDeletingChoice}
       />
+
+      {/* Question Type Change Warning Dialog */}
+      <AlertDialog 
+        open={typeChangeDialog.isOpen} 
+        onOpenChange={(open) => !open && setTypeChangeDialog({ isOpen: false, newType: null, existingChoicesCount: 0, existingGridRowsCount: 0 })}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Change Question Type?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  Changing the question type will <strong className="text-red-600">permanently delete</strong> existing answer options:
+                </p>
+                <ul className="list-disc list-inside space-y-1 text-sm bg-red-50 p-3 rounded-lg border border-red-200">
+                  {typeChangeDialog.existingChoicesCount > 0 && (
+                    <li><strong>{typeChangeDialog.existingChoicesCount}</strong> choice(s) will be removed</li>
+                  )}
+                  {typeChangeDialog.existingGridRowsCount > 0 && (
+                    <li><strong>{typeChangeDialog.existingGridRowsCount}</strong> grid row(s) will be removed</li>
+                  )}
+                </ul>
+                <p className="text-sm text-muted-foreground">
+                  New default options will be created for the new question type. This action cannot be undone after saving.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmTypeChange}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              Yes, Change Type
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Save Question Button - for existing entries in edit mode */}
+      {isEditMode && surveyEntryId && onSaveQuestion && (
+        <div className="pt-6 border-t mt-6">
+          <Button
+            onClick={onSaveQuestion}
+            disabled={isSavingQuestion}
+            className="w-full bg-green-600 text-white hover:bg-green-700"
+          >
+            {isSavingQuestion ? (
+              <div className="flex items-center gap-2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                <span>Saving Question...</span>
+              </div>
+            ) : (
+              "💾 Save Question Changes"
+            )}
+          </Button>
+          <p className="text-xs text-gray-500 text-center mt-2">
+            Save changes to this question before moving to the next
+          </p>
+        </div>
+      )}
     </div>
   )
 }

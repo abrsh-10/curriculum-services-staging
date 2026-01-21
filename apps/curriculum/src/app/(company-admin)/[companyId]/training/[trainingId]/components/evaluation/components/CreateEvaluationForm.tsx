@@ -825,7 +825,8 @@ function CreateEvaluationFormInner({ trainingId, onCancel, editingEvaluation }: 
           initialTitle={sections[sectionMetaIndex]?.title || `Section ${sectionMetaIndex + 1}`}
           initialDescription={sections[sectionMetaIndex]?.description || ""}
           initialOrder={sectionMetaIndex + 1}
-          onSave={(next) => {
+          isSaving={updateEvaluationSection.isPending}
+          onSave={async (next) => {
             const { title, description, order } = next
             const currentIndex = sectionMetaIndex
             if (currentIndex == null) return
@@ -847,7 +848,7 @@ function CreateEvaluationFormInner({ trainingId, onCancel, editingEvaluation }: 
             // Persist meta/order to server if this section exists
             const sectionId = sections[currentIndex]?.id
             if (isEditMode && sectionId) {
-              updateEvaluationSection.mutate({
+              await updateEvaluationSection.mutateAsync({
                 sectionId,
                 data: {
                   title,

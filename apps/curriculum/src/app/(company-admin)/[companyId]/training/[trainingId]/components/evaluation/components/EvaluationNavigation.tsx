@@ -91,20 +91,20 @@ export function EvaluationNavigation({
     setDraftDescs(prev => ({ ...prev, [index]: sections[index]?.description || "" }))
   }
 
-  const cancelEdit = (index: number) => {
-    setEditingMap(prev => ({ ...prev, [index]: false }))
-    setDraftTitles(prev => ({ ...prev, [index]: sections[index]?.title || `Section ${index + 1}` }))
-    setDraftDescs(prev => ({ ...prev, [index]: sections[index]?.description || "" }))
-  }
+  // const cancelEdit = (index: number) => {
+  //   setEditingMap(prev => ({ ...prev, [index]: false }))
+  //   setDraftTitles(prev => ({ ...prev, [index]: sections[index]?.title || `Section ${index + 1}` }))
+  //   setDraftDescs(prev => ({ ...prev, [index]: sections[index]?.description || "" }))
+  // }
 
-  const saveEdit = (index: number) => {
-    const newTitle = draftTitles[index] ?? sections[index]?.title ?? `Section ${index + 1}`
-    const newDesc = draftDescs[index] ?? sections[index]?.description ?? ""
-    onSaveSectionMeta?.(index, newTitle, newDesc)
-    // Also optimistically update parent via existing callbacks
-    onSelectQuestion(index, 0) // remain in section context; no-op selection for clarity
-    setEditingMap(prev => ({ ...prev, [index]: false }))
-  }
+  // const saveEdit = (index: number) => {
+  //   const newTitle = draftTitles[index] ?? sections[index]?.title ?? `Section ${index + 1}`
+  //   const newDesc = draftDescs[index] ?? sections[index]?.description ?? ""
+  //   onSaveSectionMeta?.(index, newTitle, newDesc)
+  //   // Also optimistically update parent via existing callbacks
+  //   onSelectQuestion(index, 0) // remain in section context; no-op selection for clarity
+  //   setEditingMap(prev => ({ ...prev, [index]: false }))
+  // }
 
   const handleDragStart = (e: React.DragEvent, sectionIndex: number) => {
     setDragFromIndex(sectionIndex)
