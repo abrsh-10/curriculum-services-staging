@@ -45,9 +45,10 @@ export function ViewSurveyDetails({
   const handleSaveSectionTitle = (sectionId: string) => {
     if (!editingSectionTitle.trim()) return
     
+    // Use new v2 API format
     updateSurveySection({ 
       sectionId, 
-      title: editingSectionTitle.trim() 
+      data: { title: editingSectionTitle.trim() }
     }, {
       onSuccess: () => {
         setEditingSectionId(null)

@@ -6,23 +6,13 @@ import { AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { 
-  useCreateSurvey, 
   useSurveys,
   useSurveyDetail,
   useUpdateSurvey,
   useDeleteSurvey,
-  useAddQuestionToSection,
-  useAddSectionToSurvey,
   useDeleteSurveyEntry,
   useDeleteSurveySection,
-  useUpdateSurveyEntry,
-  useUpdateSurveySection,
-  useAddChoice,
-  useRemoveChoice,
   CreateSurveyData,
-  CreateSurveySection,
-  CreateSurveyEntry,
-  UpdateSurveyEntryData,
   SurveyType
 } from "@/lib/hooks/useSurvey"
 import { 
@@ -58,15 +48,10 @@ export function SurveyComponent({ trainingId }: SurveyComponentProps) {
   } = useSurveyDetail(currentSurveyId || "", undefined)
   
   // Mutation hooks
-  const { createSurvey, isLoading: isCreatingSurvey } = useCreateSurvey(trainingId)
   const { deleteSurvey, isLoading: isDeletingSurvey } = useDeleteSurvey()
   const { updateSurvey, isLoading: isUpdatingSurvey } = useUpdateSurvey()
-  const { addQuestionToSection, isLoading: isAddingQuestion } = useAddQuestionToSection()
-  const { addSection, isLoading: isAddingSection } = useAddSectionToSurvey()
   const { deleteSurveyEntry, isLoading: isDeletingQuestion } = useDeleteSurveyEntry()
   const { deleteSurveySection, isLoading: isDeletingSection } = useDeleteSurveySection()
-  const { updateSurveyEntry } = useUpdateSurveyEntry()
-  const { updateSurveySection } = useUpdateSurveySection()
 
 
   // Extract survey data
@@ -121,158 +106,18 @@ export function SurveyComponent({ trainingId }: SurveyComponentProps) {
   }
 
   // Form submission handlers
-  const handleCreateSubmit = (data: CreateSurveyData) => {
-    createSurvey(data, {
-      onSuccess: () => {
-        refetchSurveys()
-        handleBackToList()
-      }
-    })
+  const handleCreateSubmit = () => {
+    // CreateSurveyForm handles submission internally via useCreateSurveyNew
+    refetchSurveys()
+    handleBackToList()
   }
 
-  const handleEditSubmit = (data: CreateSurveyData & { 
-    editMetadata?: {
-      newSections: CreateSurveySection[]
-      newQuestionsPerSection: { sectionIndex: number; sectionId?: string; newQuestions: CreateSurveyEntry[] }[]
-      updatedQuestions?: { 
-        sectionIndex: number; 
-        questionIndex: number; 
-        questionId: string; 
-        updates: Partial<UpdateSurveyEntryData>;
-        changeType: string;
-      }[]
-      updatedSectionTitles?: { sectionIndex: number; sectionId: string; title: string }[]
-    }
-  }) => {
-    if (!currentSurveyId) return;
-
-    const { editMetadata } = data;
-    
-    if (!editMetadata) {
-      // No changes detected, stay in builder
-      toast.message('No changes to save');
-      return;
-    }
-
-    let pendingOperations = 0;
-    let completedOperations = 0;
-    let successCount = 0;
-    let failureCount = 0;
-
-    const checkCompletion = () => {
-      completedOperations++;
-      if (completedOperations === pendingOperations) {
-        // All operations completed - stay in builder
-        if (failureCount === 0) {
-          toast.success(`All changes saved (${successCount})`)
-        } else if (successCount > 0) {
-          toast.error(`${failureCount} change(s) failed, ${successCount} succeeded`)
-        } else {
-          toast.error(`All ${failureCount} change(s) failed`)
-        }
-        // React Query invalidation will handle the refetch automatically
-        // Stay in builder - no redirect
-        setFocusSection(undefined);
-      }
-    };
-
-    // Handle new questions in existing sections
-    if (editMetadata.newQuestionsPerSection.length > 0) {
-      editMetadata.newQuestionsPerSection.forEach(({ sectionId, newQuestions }) => {
-        if (sectionId) {
-          newQuestions.forEach(question => {
-            pendingOperations++;
-            addQuestionToSection({
-              sectionId,
-              
-              questionData: {
-                question: question.question,
-                questionImage: question.questionImage,
-                questionImageFile: question.questionImageFile,
-                questionType: question.questionType,
-                choices: (Array.isArray(question.choices)
-                  ? (question.choices as (string | { choice: string; choiceImage?: string; choiceImageFile?: File })[]).map((c) => ({
-                      choice: typeof c === 'string' ? c : c.choice,
-                      choiceImage: typeof c === 'string' ? undefined : c.choiceImage,
-                      choiceImageFile: typeof c === 'string' ? undefined : c.choiceImageFile
-                    }))
-                  : []),
-                allowTextAnswer: !!question.allowTextAnswer,
-                rows: question.rows || [],
-                questionNumber: question.questionNumber,
-                parentQuestionNumber: question.parentQuestionNumber,
-                parentChoice: question.parentChoice,
-                followUp: question.followUp,
-                required: !!question.required,
-              }
-            }, {
-              onSuccess: () => { successCount++; checkCompletion() },
-              onError: () => {
-                // Still count as completed to avoid hanging
-                failureCount++; checkCompletion();
-              }
-            });
-          });
-        }
-      });
-    }
-
-    // Handle new sections
-    if (editMetadata.newSections.length > 0) {
-      editMetadata.newSections.forEach(newSection => {
-        pendingOperations++;
-        addSection({
-          surveyId: currentSurveyId,
-          sectionData: {
-            title: newSection.title,
-            surveyEntries: newSection.surveyEntries
-          }
-        }, {
-          onSuccess: () => { successCount++; checkCompletion() },
-          onError: () => {
-            // Still count as completed to avoid hanging
-            failureCount++; checkCompletion();
-          }
-        });
-      });
-    }
-
-    // Handle updated section titles
-    if (editMetadata.updatedSectionTitles && editMetadata.updatedSectionTitles.length > 0) {
-      editMetadata.updatedSectionTitles.forEach(({ sectionId, title }) => {
-        pendingOperations++;
-        updateSurveySection({ sectionId, title }, {
-          onSuccess: () => { successCount++; checkCompletion() },
-          onError: () => { failureCount++; checkCompletion() }
-        })
-      })
-    }
-
-    // Handle updated questions
-    if (editMetadata.updatedQuestions && editMetadata.updatedQuestions.length > 0) {
-      editMetadata.updatedQuestions.forEach(({ questionId, updates, changeType }) => {
-        pendingOperations++;
-        console.log(`PATCH question ${questionId} - ${changeType}:`, updates);
-        updateSurveyEntry({ surveyEntryId: questionId, questionData: updates }, {
-          onSuccess: () => { 
-            console.log(`✓ Successfully updated question ${questionId} (${changeType})`);
-            successCount++; 
-            checkCompletion() 
-          },
-          onError: () => { 
-            console.log(`✗ Failed to update question ${questionId} (${changeType})`);
-            failureCount++; 
-            checkCompletion() 
-          }
-        })
-      })
-    }
-
-    // If no operations were queued, stay in builder
-    if (pendingOperations === 0) {
-      toast.message('No changes to save')
-      // Stay in builder - no redirect
-    }
+  // Edit submit handler - CreateSurveyForm now handles all operations internally
+  // This handler is kept for backward compatibility but simplified
+  const handleEditSubmit = (_data: CreateSurveyData) => {
+    // CreateSurveyForm handles all add/update operations internally via v2 API hooks
+    // This callback is triggered after operations complete
+    setFocusSection(undefined);
   }
 
   const handleUpdateSubmit = (data: { surveyId: string; data: { name: string; type: SurveyType; description: string } }) => {
@@ -364,12 +209,13 @@ export function SurveyComponent({ trainingId }: SurveyComponentProps) {
     case 'create':
       return (
         <CreateSurveyForm
+          trainingId={trainingId}
           onCancel={() => {
             handleBackToList()
             setFocusSection(undefined) // Clear focus when canceling
           }}
           onSubmit={currentSurveyId ? handleEditSubmit : handleCreateSubmit}
-          isSubmitting={currentSurveyId ? (isAddingQuestion || isAddingSection || isDeletingQuestion || isDeletingSection) : isCreatingSurvey}
+          isSubmitting={isDeletingQuestion || isDeletingSection}
           editingSurveyId={currentSurveyId || undefined}
           initialSurveyName={surveyDetail?.name}
           initialSurveyType={surveyDetail?.type || undefined}

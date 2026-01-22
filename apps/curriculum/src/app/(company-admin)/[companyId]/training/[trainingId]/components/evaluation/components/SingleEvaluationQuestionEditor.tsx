@@ -93,7 +93,8 @@ export function SingleEvaluationQuestionEditor({
   }
 
   const createEmptyFollowUpQuestion = (triggerChoiceClientId: string): EvaluationEntryForm => ({
-    clientId: crypto.randomUUID(),
+    // Use the choice's clientId as the follow-up's clientId - it's already generated and unique
+    clientId: triggerChoiceClientId,
     question: "",
     questionType: "TEXT",
     choices: [],
@@ -565,13 +566,15 @@ export function SingleEvaluationQuestionEditor({
                         
                         <div className="pt-2 flex gap-2 justify-end">
                           {/* Add Follow-up Button (new follow-up, server add) */}
-                          {/* Only allow adding a follow-up separately when the parent question already exists on the server */}
-                          {isEditMode && sectionId && question.id && !choice.followUpQuestion?.id && (
+                          {/* Only allow adding a follow-up when parent question AND choice have server IDs */}
+                          {isEditMode && sectionId && question.id && choice.id && choice.followUpQuestion && !choice.followUpQuestion?.id && (
                             <Button
                               size="sm"
                               className="bg-green-600 text-white hover:bg-green-700"
                               onClick={async () => {
                                 const follow = choice.followUpQuestion!
+                                const choiceServerId = choice.id! // Already verified in condition
+                                const parentServerId = question.id! // Already verified in condition
                                 await addQuestionEntry.mutateAsync({
                                   sectionId,
                                   entry: {
@@ -587,8 +590,9 @@ export function SingleEvaluationQuestionEditor({
                                       choiceImageFile: fChoice.choiceImageFile
                                     })),
                                     isFollowUp: true,
-                                    parentQuestionClientId: question.clientId,
-                                    triggerChoiceClientIds: [choice.clientId]
+                                    // Use server IDs for parent and trigger - API requires these
+                                    parentQuestionId: parentServerId,
+                                    triggerChoiceIds: [choiceServerId]
                                   }
                                 })
                               }}

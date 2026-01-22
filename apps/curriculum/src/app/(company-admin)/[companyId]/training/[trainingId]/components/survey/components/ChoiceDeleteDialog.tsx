@@ -16,7 +16,6 @@ interface ChoiceDeleteDialogProps {
   onClose: () => void
   onConfirm: () => void
   choiceText: string
-  choiceOrder: string
   isDeleting: boolean
 }
 
@@ -25,16 +24,15 @@ export function ChoiceDeleteDialog({
   onClose,
   onConfirm,
   choiceText,
-  choiceOrder,
   isDeleting
 }: ChoiceDeleteDialogProps) {
   return (
     <AlertDialog open={isOpen} onOpenChange={onClose}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Remove Choice</AlertDialogTitle>
+          <AlertDialogTitle>Delete Choice</AlertDialogTitle>
           <AlertDialogDescription>
-            Are you sure you want to remove choice <span className="font-semibold">{choiceOrder}</span>: &quot;{choiceText || 'Empty choice'}&quot;? 
+            Are you sure you want to delete &quot;{choiceText || 'this choice'}&quot;? 
             This action cannot be undone and may affect survey responses.
           </AlertDialogDescription>
         </AlertDialogHeader>
@@ -48,10 +46,10 @@ export function ChoiceDeleteDialog({
             {isDeleting ? (
               <div className="flex items-center gap-2">
                 <div className="animate-spin rounded-full h-3 w-3 border-b border-white"></div>
-                <span>Removing...</span>
+                <span>Deleting...</span>
               </div>
             ) : (
-              "Remove Choice"
+              "Delete Choice"
             )}
           </AlertDialogAction>
         </AlertDialogFooter>

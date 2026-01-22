@@ -1,50 +1,57 @@
- "use client"
- 
- import { useState, useEffect } from "react"
- import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
- import { Label } from "@/components/ui/label"
- import { Input } from "@/components/ui/input"
- import { Textarea } from "@/components/ui/textarea"
- import { Button } from "@/components/ui/button"
- 
- interface SectionMetaModalProps {
-   isOpen: boolean
-   onClose: () => void
-   sectionIndex: number
-   totalSections: number
-   initialTitle: string
-   initialDescription: string
-   initialOrder: number
-   onSave: (payload: { title: string; description: string; order: number }) => void
- }
- 
- export function SectionMetaModal({
-   isOpen,
-   onClose,
-   sectionIndex,
-   totalSections,
-   initialTitle,
-   initialDescription,
-   initialOrder,
-   onSave
- }: SectionMetaModalProps) {
-   const [title, setTitle] = useState(initialTitle)
-   const [description, setDescription] = useState(initialDescription)
-   const [order, setOrder] = useState(initialOrder)
-   const [saving, setSaving] = useState(false)
- 
-   useEffect(() => {
-     setTitle(initialTitle)
-     setDescription(initialDescription)
-     setOrder(initialOrder)
-   }, [initialTitle, initialDescription, initialOrder, sectionIndex])
- 
-   const handleSave = () => {
-     if (!title.trim()) return
-     setSaving(true)
-     onSave({ title: title.trim(), description, order })
-     setSaving(false)
-   }
+"use client"
+
+import { useState, useEffect } from "react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Button } from "@/components/ui/button"
+
+interface SectionMetaModalProps {
+  isOpen: boolean
+  onClose: () => void
+  sectionIndex: number
+  totalSections: number
+  initialTitle: string
+  initialDescription: string
+  initialOrder: number
+  onSave: (payload: { title: string; description: string; order: number }) => Promise<void> | void
+  isSaving?: boolean
+}
+
+export function SectionMetaModal({
+  isOpen,
+  onClose,
+  sectionIndex,
+  totalSections,
+  initialTitle,
+  initialDescription,
+  initialOrder,
+  onSave,
+  isSaving = false
+}: SectionMetaModalProps) {
+  const [title, setTitle] = useState(initialTitle)
+  const [description, setDescription] = useState(initialDescription)
+  const [order, setOrder] = useState(initialOrder)
+  const [localSaving, setLocalSaving] = useState(false)
+
+  const saving = isSaving || localSaving
+
+  useEffect(() => {
+    setTitle(initialTitle)
+    setDescription(initialDescription)
+    setOrder(initialOrder)
+  }, [initialTitle, initialDescription, initialOrder, sectionIndex])
+
+  const handleSave = async () => {
+    if (!title.trim() || saving) return
+    setLocalSaving(true)
+    try {
+      await onSave({ title: title.trim(), description, order })
+    } finally {
+      setLocalSaving(false)
+    }
+  }
  
    return (
      <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>

@@ -390,11 +390,9 @@ export function useAddEvaluationSections() {
           formData.append(`sections[${si}].entries[${ei}].questionType`, entry.questionType)
           formData.append(`sections[${si}].entries[${ei}].isFollowUp`, String(entry.isFollowUp))
           
-          // Question Image
+          // Question Image - only send if it's a new File (not URL string)
           if (entry.questionImageFile instanceof File) {
             formData.append(`sections[${si}].entries[${ei}].questionImage`, entry.questionImageFile)
-          } else if (entry.questionImage) {
-            formData.append(`sections[${si}].entries[${ei}].questionImage`, entry.questionImage)
           }
           
           // Follow-up logic
@@ -423,11 +421,9 @@ export function useAddEvaluationSections() {
               formData.append(`sections[${si}].entries[${ei}].choices[${ci}].clientId`, choice.clientId)
               formData.append(`sections[${si}].entries[${ei}].choices[${ci}].choiceText`, choice.choiceText)
               
-              // Choice Image
+              // Choice Image - only send if it's a new File (not URL string)
               if (choice.choiceImageFile instanceof File) {
                 formData.append(`sections[${si}].entries[${ei}].choices[${ci}].choiceImage`, choice.choiceImageFile)
-              } else if (choice.choiceImage) {
-                formData.append(`sections[${si}].entries[${ei}].choices[${ci}].choiceImage`, choice.choiceImage)
               }
             })
           }
@@ -509,11 +505,9 @@ export function useAddQuestionEntry() {
       formData.append('questionType', entry.questionType)
       formData.append('isFollowUp', String(entry.isFollowUp))
       
-      // Question Image
+      // Question Image - only send if it's a new File (not URL string)
       if (entry.questionImageFile instanceof File) {
         formData.append('questionImage', entry.questionImageFile)
-      } else if (entry.questionImage) {
-        formData.append('questionImage', entry.questionImage)
       }
       
       // Follow-up logic
@@ -542,11 +536,9 @@ export function useAddQuestionEntry() {
           formData.append(`choices[${ci}].clientId`, choice.clientId)
           formData.append(`choices[${ci}].choiceText`, choice.choiceText)
           
-          // Choice Image
+          // Choice Image - only send if it's a new File (not URL string)
           if (choice.choiceImageFile instanceof File) {
             formData.append(`choices[${ci}].choiceImage`, choice.choiceImageFile)
-          } else if (choice.choiceImage) {
-            formData.append(`choices[${ci}].choiceImage`, choice.choiceImage)
           }
         })
       }
@@ -616,11 +608,9 @@ export function useUpdateQuestionEntry() {
       formData.append('questionType', data.questionType)
       formData.append('isFollowUp', String(data.isFollowUp))
       
-      // Question Image
+      // Question Image - only send if it's a new File (not URL string)
       if (data.questionImageFile instanceof File) {
         formData.append('questionImage', data.questionImageFile)
-      } else if (data.questionImage) {
-        formData.append('questionImage', data.questionImage)
       }
       
       // Follow-up logic
@@ -641,11 +631,9 @@ export function useUpdateQuestionEntry() {
           formData.append(`choices[${ci}].clientId`, choice.clientId)
           formData.append(`choices[${ci}].choiceText`, choice.choiceText)
           
-          // Choice Image
+          // Choice Image - only send if it's a new File (not URL string)
           if (choice.choiceImageFile instanceof File) {
             formData.append(`choices[${ci}].choiceImage`, choice.choiceImageFile)
-          } else if (choice.choiceImage) {
-            formData.append(`choices[${ci}].choiceImage`, choice.choiceImage)
           }
         })
       }
@@ -695,11 +683,9 @@ export function useEditChoice() {
       formData.append('clientId', data.clientId)
       formData.append('choiceText', data.choiceText)
       
-      // Choice Image
+      // Choice Image - only send if it's a new File (not URL string)
       if (data.choiceImageFile instanceof File) {
         formData.append('choiceImage', data.choiceImageFile)
-      } else if (data.choiceImage) {
-        formData.append('choiceImage', data.choiceImage)
       }
       
       const response = await axios.patch(
@@ -746,11 +732,9 @@ export function useAddChoice() {
       formData.append('clientId', data.clientId)
       formData.append('choiceText', data.choiceText)
       
-      // Choice Image
+      // Choice Image - only send if it's a new File (not URL string)
       if (data.choiceImageFile instanceof File) {
         formData.append('choiceImage', data.choiceImageFile)
-      } else if (data.choiceImage) {
-        formData.append('choiceImage', data.choiceImage)
       }
       
       const response = await axios.post(
