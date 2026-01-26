@@ -31,9 +31,7 @@ import {
   useAddChoice,
   useAddGridRow,
   useDeleteChoice,
-  useDeleteGridRow,
-  useLinkFollowUp,
-  useUpdateFollowUpTriggers
+  useDeleteGridRow
 } from "@/lib/hooks/useSurvey"
 
 // Import the components
@@ -122,10 +120,6 @@ export function CreateSurveyForm({
   // Delete hooks for removing old choices and grid rows when type changes
   const { deleteChoiceAsync } = useDeleteChoice()
   const { deleteGridRowAsync } = useDeleteGridRow()
-  
-  // Follow-up linking hooks
-  const { linkFollowUpAsync } = useLinkFollowUp()
-  const { updateTriggersAsync } = useUpdateFollowUpTriggers()
   
   // State for tracking which question is being saved
   const [isSavingCurrentQuestion, setIsSavingCurrentQuestion] = useState(false)
@@ -431,20 +425,22 @@ export function CreateSurveyForm({
     try {
       const promises: Promise<unknown>[] = []
       
-      // 1. Update entry itself (question text, type, required, image)
+      // 1. Update entry itself ONLY if it has changed (question text, type, required, image)
       // Note: We don't include choices/gridRows here - they're handled separately
-      promises.push(
-        updateSurveyEntryAsync({
-          entryId: currentEntry.id,
-          data: {
-            question: currentEntry.question,
-            questionNumber: currentEntry.questionNumber,
-            questionType: currentEntry.questionType,
-            isRequired: currentEntry.isRequired,
-            questionImageFile: currentEntry.questionImageFile
-          }
-        })
-      )
+      if (originalEntry && hasEntryChanged(currentEntry, originalEntry)) {
+        promises.push(
+          updateSurveyEntryAsync({
+            entryId: currentEntry.id,
+            data: {
+              question: currentEntry.question,
+              questionNumber: currentEntry.questionNumber,
+              questionType: currentEntry.questionType,
+              isRequired: currentEntry.isRequired,
+              questionImageFile: currentEntry.questionImageFile
+            }
+          })
+        )
+      }
       
       // 2. Delete old choices that are no longer present (e.g., when type changed)
       const currentChoiceIds = new Set(currentEntry.choices.map(c => c.id).filter(Boolean))
@@ -547,41 +543,93 @@ export function CreateSurveyForm({
       // Wait for all basic operations first
       await Promise.all(promises)
       
-      // 6. Handle follow-up question linking (after choices are saved to get IDs)
-      // We need to refresh to get any new choice IDs, then handle linking
+      // 6. Handle follow-up questions - create new ones with isFollowUp: true
+      // After choices are saved, we may need to refresh to get new choice IDs
       const followUpPromises: Promise<unknown>[] = []
+      
+      // Calculate the next question number for follow-ups
+      const nextQuestionNumber = getNextQuestionNumber()
+      let followUpQuestionCounter = 0
       
       for (const choice of currentEntry.choices) {
         if (choice.hasFollowUp && choice.followUpQuestion) {
           const followUp = choice.followUpQuestion
-          const originalChoice = originalEntry?.choices?.find(oc => oc.id === choice.id)
-          const originalFollowUp = originalChoice?.followUpQuestion
           
-          if (followUp.id) {
-            // EXISTING follow-up - check if trigger choices changed
-            const currentTriggerIds = choice.id ? [choice.id] : []
-            const originalTriggerIds = followUp.triggerChoiceIds || []
+          // Only create NEW follow-ups (no ID yet)
+          // Existing follow-ups are updated via normal entry update flow
+          if (!followUp.id && choice.id && currentEntry.id) {
+            // NEW follow-up for an EXISTING choice (choice has ID from server)
+            const followUpNumber = nextQuestionNumber + followUpQuestionCounter
+            followUpQuestionCounter++
             
-            // If trigger choices changed, update them
-            const triggersChanged = 
-              currentTriggerIds.length !== originalTriggerIds.length ||
-              !currentTriggerIds.every(id => originalTriggerIds.includes(id))
+            followUpPromises.push(
+              addEntryAsync({
+                sectionId: sections[selectedSection].id!,
+                entryData: {
+                  clientId: followUp.clientId,
+                  question: followUp.question,
+                  questionNumber: followUpNumber,
+                  questionType: followUp.questionType,
+                  isRequired: followUp.isRequired,
+                  isFollowUp: true,
+                  parentQuestionId: currentEntry.id, // Use ID since parent exists
+                  triggerChoiceIds: [choice.id], // Use ID since choice exists
+                  questionImageFile: followUp.questionImageFile,
+                  choices: followUp.choices.map((c, ci) => ({
+                    clientId: c.clientId,
+                    choiceOrder: c.choiceOrder || String.fromCharCode(65 + ci),
+                    choiceText: c.choiceText,
+                    choiceImageFile: c.choiceImageFile,
+                    hasTextInput: c.hasTextInput || false
+                  })),
+                  gridRows: followUp.gridRows.map((r, ri) => ({
+                    rowNumber: r.rowNumber || ri + 1,
+                    rowText: r.rowText,
+                    rowImageFile: r.rowImageFile
+                  }))
+                }
+              }).catch(err => {
+                console.error(`Failed to create follow-up:`, err)
+              })
+            )
+          } else if (!followUp.id && !choice.id) {
+            // NEW follow-up for a NEW choice (choice has no ID yet, only clientId)
+            // This happens when both choice and follow-up are new
+            const followUpNumber = nextQuestionNumber + followUpQuestionCounter
+            followUpQuestionCounter++
             
-            if (triggersChanged && currentEntry.id && choice.id) {
-              // Link to new trigger choice(s)
-              followUpPromises.push(
-                linkFollowUpAsync({
-                  followUpEntryId: followUp.id,
-                  parentQuestionId: currentEntry.id,
-                  triggerChoiceIds: [choice.id]
-                }).catch(err => {
-                  console.error(`Failed to update follow-up triggers:`, err)
-                })
-              )
-            }
+            followUpPromises.push(
+              addEntryAsync({
+                sectionId: sections[selectedSection].id!,
+                entryData: {
+                  clientId: followUp.clientId,
+                  question: followUp.question,
+                  questionNumber: followUpNumber,
+                  questionType: followUp.questionType,
+                  isRequired: followUp.isRequired,
+                  isFollowUp: true,
+                  parentQuestionClientId: currentEntry.clientId, // Use clientId since parent is new
+                  triggerChoiceClientIds: [choice.clientId], // Use clientId since choice is new
+                  questionImageFile: followUp.questionImageFile,
+                  choices: followUp.choices.map((c, ci) => ({
+                    clientId: c.clientId,
+                    choiceOrder: c.choiceOrder || String.fromCharCode(65 + ci),
+                    choiceText: c.choiceText,
+                    choiceImageFile: c.choiceImageFile,
+                    hasTextInput: c.hasTextInput || false
+                  })),
+                  gridRows: followUp.gridRows.map((r, ri) => ({
+                    rowNumber: r.rowNumber || ri + 1,
+                    rowText: r.rowText,
+                    rowImageFile: r.rowImageFile
+                  }))
+                }
+              }).catch(err => {
+                console.error(`Failed to create follow-up:`, err)
+              })
+            )
           }
-          // Note: NEW follow-ups without IDs are handled when creating new entries
-          // They should be POSTed via addEntryToSection with isFollowUp: true
+          // Note: Existing follow-ups (with ID) are handled by normal entry updates
         }
       }
       
@@ -589,17 +637,24 @@ export function CreateSurveyForm({
         await Promise.all(followUpPromises)
       }
       
-      toast.success("Question saved successfully!")
+      // Count what was actually changed
+      const totalOperations = promises.length + followUpPromises.length
       
-      // Update snapshot for this entry to reflect saved state
-      const newSnapshot = JSON.parse(JSON.stringify(originalSectionsSnapshot))
-      if (newSnapshot[selectedSection] && newSnapshot[selectedSection].entries[selectedQuestion]) {
-        newSnapshot[selectedSection].entries[selectedQuestion] = JSON.parse(JSON.stringify(currentEntry))
+      if (totalOperations > 0) {
+        toast.success("Question saved successfully!")
+        
+        // Update snapshot for this entry to reflect saved state
+        const newSnapshot = JSON.parse(JSON.stringify(originalSectionsSnapshot))
+        if (newSnapshot[selectedSection] && newSnapshot[selectedSection].entries[selectedQuestion]) {
+          newSnapshot[selectedSection].entries[selectedQuestion] = JSON.parse(JSON.stringify(currentEntry))
+        }
+        setOriginalSectionsSnapshot(newSnapshot)
+        
+        // Refresh data to get any server-generated IDs for new choices/gridRows
+        onRefreshSurveyData?.()
+      } else {
+        toast.info("No changes to save")
       }
-      setOriginalSectionsSnapshot(newSnapshot)
-      
-      // Refresh data to get any server-generated IDs for new choices/gridRows
-      onRefreshSurveyData?.()
       
     } catch (error) {
       console.error("Failed to save question:", error)

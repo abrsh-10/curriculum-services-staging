@@ -29,8 +29,7 @@ import {
   emptyChoice,
   createEmptyFollowUp,
   useDeleteChoice,
-  useUnlinkFollowUp,
-  useLinkFollowUp
+  useDeleteSurveyEntry
 } from "@/lib/hooks/useSurvey"
 
 interface SingleQuestionEditorProps {
@@ -54,12 +53,9 @@ export function SingleQuestionEditor({
   onSaveQuestion,
   isSavingQuestion = false
 }: SingleQuestionEditorProps) {
-  // API hooks for choice delete operations
+  // API hooks for delete operations
   const { deleteChoice, isLoading: isDeletingChoice } = useDeleteChoice()
-  
-  // API hooks for follow-up link/unlink operations
-  const { unlinkFollowUpAsync, isLoading: isUnlinkingFollowUp } = useUnlinkFollowUp()
-  const { linkFollowUpAsync, isLoading: isLinkingFollowUp } = useLinkFollowUp()
+  const { deleteSurveyEntryAsync, isLoading: isDeletingFollowUp } = useDeleteSurveyEntry()
   
   // UI state
   const [expandedFollowUps, setExpandedFollowUps] = useState<Record<string, boolean>>({})
@@ -77,8 +73,8 @@ export function SingleQuestionEditor({
     choiceId: ""
   });
 
-  // Unlink follow-up confirmation dialog state
-  const [unlinkFollowUpDialog, setUnlinkFollowUpDialog] = useState<{
+  // Delete follow-up confirmation dialog state
+  const [deleteFollowUpDialog, setDeleteFollowUpDialog] = useState<{
     isOpen: boolean;
     choiceIndex: number;
     followUpEntryId: string;
@@ -203,9 +199,9 @@ export function SingleQuestionEditor({
     const choice = question.choices[choiceIndex]
     
     // If UNCHECKING follow-up on an existing follow-up question (has server ID)
-    // Show confirmation dialog and call unlink API
+    // Show confirmation dialog to DELETE the follow-up entry
     if (!hasFollowUp && choice.hasFollowUp && choice.followUpQuestion?.id && isEditMode) {
-      setUnlinkFollowUpDialog({
+      setDeleteFollowUpDialog({
         isOpen: true,
         choiceIndex,
         followUpEntryId: choice.followUpQuestion.id,
@@ -232,25 +228,25 @@ export function SingleQuestionEditor({
     }
   }
 
-  // Handle confirmed unlink of follow-up question
-  const handleConfirmUnlinkFollowUp = async () => {
-    if (!unlinkFollowUpDialog.followUpEntryId) return
+  // Handle confirmed delete of follow-up question
+  const handleConfirmDeleteFollowUp = async () => {
+    if (!deleteFollowUpDialog.followUpEntryId) return
     
     try {
-      await unlinkFollowUpAsync(unlinkFollowUpDialog.followUpEntryId)
+      await deleteSurveyEntryAsync(deleteFollowUpDialog.followUpEntryId)
       
       // Update local state to remove follow-up
-      const choice = question.choices[unlinkFollowUpDialog.choiceIndex]
-      updateChoice(unlinkFollowUpDialog.choiceIndex, {
+      const choice = question.choices[deleteFollowUpDialog.choiceIndex]
+      updateChoice(deleteFollowUpDialog.choiceIndex, {
         ...choice,
         hasFollowUp: false,
         followUpQuestion: undefined
       })
       
-      setUnlinkFollowUpDialog({ isOpen: false, choiceIndex: -1, followUpEntryId: "", choiceText: "" })
+      setDeleteFollowUpDialog({ isOpen: false, choiceIndex: -1, followUpEntryId: "", choiceText: "" })
       onRefreshSurveyData?.()
     } catch (error) {
-      console.error("Failed to unlink follow-up:", error)
+      console.error("Failed to delete follow-up:", error)
     }
   }
 
@@ -828,39 +824,39 @@ export function SingleQuestionEditor({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Unlink Follow-up Question Confirmation Dialog */}
+      {/* Delete Follow-up Question Confirmation Dialog */}
       <AlertDialog 
-        open={unlinkFollowUpDialog.isOpen} 
-        onOpenChange={(open) => !open && setUnlinkFollowUpDialog({ isOpen: false, choiceIndex: -1, followUpEntryId: "", choiceText: "" })}
+        open={deleteFollowUpDialog.isOpen} 
+        onOpenChange={(open) => !open && setDeleteFollowUpDialog({ isOpen: false, choiceIndex: -1, followUpEntryId: "", choiceText: "" })}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove Follow-up Question?</AlertDialogTitle>
+            <AlertDialogTitle>Delete Follow-up Question?</AlertDialogTitle>
             <AlertDialogDescription>
               <div className="space-y-3">
                 <p>
-                  Are you sure you want to remove the follow-up question for choice <strong>&quot;{unlinkFollowUpDialog.choiceText}&quot;</strong>?
+                  Are you sure you want to delete the follow-up question for choice <strong>&quot;{deleteFollowUpDialog.choiceText}&quot;</strong>?
                 </p>
-                <p className="text-sm text-amber-600 bg-amber-50 p-3 rounded-lg border border-amber-200">
-                  ⚠️ The follow-up question will be unlinked from this choice. It will become a standalone question if you want to keep it, or you can delete it separately.
+                <p className="text-sm text-red-600 bg-red-50 p-3 rounded-lg border border-red-200">
+                  ⚠️ This will permanently delete the follow-up question and all its answers. This action cannot be undone.
                 </p>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isUnlinkingFollowUp}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeletingFollowUp}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleConfirmUnlinkFollowUp}
-              disabled={isUnlinkingFollowUp}
-              className="bg-amber-600 hover:bg-amber-700 text-white"
+              onClick={handleConfirmDeleteFollowUp}
+              disabled={isDeletingFollowUp}
+              className="bg-red-600 hover:bg-red-700 text-white"
             >
-              {isUnlinkingFollowUp ? (
+              {isDeletingFollowUp ? (
                 <div className="flex items-center gap-2">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                  <span>Unlinking...</span>
+                  <span>Deleting...</span>
                 </div>
               ) : (
-                "Yes, Remove Follow-up"
+                "Yes, Delete Follow-up"
               )}
             </AlertDialogAction>
           </AlertDialogFooter>
