@@ -1,11 +1,11 @@
 "use client"
 
-import { useState, useEffect, useMemo, useCallback } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { toast } from "sonner"
 
-// New types
+// Types and hooks
 import { 
   SurveyType,
   SurveySectionForm,
@@ -17,6 +17,9 @@ import {
   emptyEntry,
   validateSurveyEntry,
   flattenEntriesForPayload,
+} from "@/lib/hooks/survey-types"
+
+import {
   useCreateSurveyNew,
   useSurveyDetailNew,
   useAddSectionsBulk,
@@ -28,18 +31,12 @@ import {
   useAddChoice,
   useAddGridRow,
   useDeleteChoice,
-  useDeleteGridRow
+  useDeleteGridRow,
+  useLinkFollowUp,
+  useUpdateFollowUpTriggers
 } from "@/lib/hooks/useSurvey"
 
-// Legacy types for backward compatibility with parent component
-import type { 
-  CreateSurveyData, 
-  CreateSurveySection, 
-  CreateSurveyEntry,
-  UpdateSurveyEntryData
-} from "@/lib/hooks/useSurvey"
-
-// Import the new components
+// Import the components
 import { SurveySettings } from "./components/SurveySettings"
 import { SurveyNavigation } from "./components/SurveyNavigation"
 import { QuestionPreview } from "./components/QuestionPreviews"
@@ -48,20 +45,7 @@ import { SingleQuestionEditor } from "./components/SingleQuestionEditor"
 interface CreateSurveyFormProps {
   trainingId: string
   onCancel: () => void
-  onSubmit: (data: CreateSurveyData & { 
-    editMetadata?: {
-      newSections: CreateSurveySection[]
-      newQuestionsPerSection: { sectionIndex: number; sectionId?: string; newQuestions: CreateSurveyEntry[] }[]
-      updatedQuestions?: { 
-        sectionIndex: number; 
-        questionIndex: number; 
-        questionId: string; 
-        updates: Partial<UpdateSurveyEntryData>;
-        changeType: string;
-      }[]
-      updatedSectionTitles?: { sectionIndex: number; sectionId: string; title: string }[]
-    }
-  }) => void
+  onSubmit: () => void
   isSubmitting: boolean
   editingSurveyId?: string
   initialSurveyName?: string
@@ -138,6 +122,10 @@ export function CreateSurveyForm({
   // Delete hooks for removing old choices and grid rows when type changes
   const { deleteChoiceAsync } = useDeleteChoice()
   const { deleteGridRowAsync } = useDeleteGridRow()
+  
+  // Follow-up linking hooks
+  const { linkFollowUpAsync } = useLinkFollowUp()
+  const { updateTriggersAsync } = useUpdateFollowUpTriggers()
   
   // State for tracking which question is being saved
   const [isSavingCurrentQuestion, setIsSavingCurrentQuestion] = useState(false)
@@ -556,8 +544,50 @@ export function CreateSurveyForm({
         }
       }
       
-      // Wait for all operations
+      // Wait for all basic operations first
       await Promise.all(promises)
+      
+      // 6. Handle follow-up question linking (after choices are saved to get IDs)
+      // We need to refresh to get any new choice IDs, then handle linking
+      const followUpPromises: Promise<unknown>[] = []
+      
+      for (const choice of currentEntry.choices) {
+        if (choice.hasFollowUp && choice.followUpQuestion) {
+          const followUp = choice.followUpQuestion
+          const originalChoice = originalEntry?.choices?.find(oc => oc.id === choice.id)
+          const originalFollowUp = originalChoice?.followUpQuestion
+          
+          if (followUp.id) {
+            // EXISTING follow-up - check if trigger choices changed
+            const currentTriggerIds = choice.id ? [choice.id] : []
+            const originalTriggerIds = followUp.triggerChoiceIds || []
+            
+            // If trigger choices changed, update them
+            const triggersChanged = 
+              currentTriggerIds.length !== originalTriggerIds.length ||
+              !currentTriggerIds.every(id => originalTriggerIds.includes(id))
+            
+            if (triggersChanged && currentEntry.id && choice.id) {
+              // Link to new trigger choice(s)
+              followUpPromises.push(
+                linkFollowUpAsync({
+                  followUpEntryId: followUp.id,
+                  parentQuestionId: currentEntry.id,
+                  triggerChoiceIds: [choice.id]
+                }).catch(err => {
+                  console.error(`Failed to update follow-up triggers:`, err)
+                })
+              )
+            }
+          }
+          // Note: NEW follow-ups without IDs are handled when creating new entries
+          // They should be POSTed via addEntryToSection with isFollowUp: true
+        }
+      }
+      
+      if (followUpPromises.length > 0) {
+        await Promise.all(followUpPromises)
+      }
       
       toast.success("Question saved successfully!")
       
@@ -901,7 +931,7 @@ export function CreateSurveyForm({
         <div className="grid grid-cols-12 gap-8 max-w-full">
           {/* Left Sidebar - Navigation */}
           <div className="col-span-3">
-            <SurveyNavigationNew
+            <SurveyNavigation
               sections={sections}
               selectedSection={selectedSection}
               selectedQuestion={selectedQuestion}
@@ -962,115 +992,11 @@ export function CreateSurveyForm({
           {/* Right Sidebar - Preview */}
           <div className="col-span-3">
             {editMode === 'question' && currentQuestion && (
-              <QuestionPreviewNew question={currentQuestion} />
+              <QuestionPreview question={currentQuestion} />
             )}
           </div>
         </div>
       </div>
     </div>
   )
-}
-
-// =============================================================================
-// New Navigation Component (adapts new types to existing SurveyNavigation)
-// =============================================================================
-
-function SurveyNavigationNew({
-  sections,
-  selectedSection,
-  selectedQuestion,
-  editMode,
-  surveyName,
-  surveyType,
-  isEditMode,
-  originalSectionsCount,
-  onSelectSurveySettings,
-  onSelectQuestion,
-  onUpdateSectionTitle,
-  onUpdateSectionDescription,
-  onDeleteSection,
-  onDeleteQuestion,
-  onAddQuestion,
-  onAddSection
-}: {
-  sections: SurveySectionForm[]
-  selectedSection: number
-  selectedQuestion: number
-  editMode: 'survey' | 'question'
-  surveyName: string
-  surveyType: SurveyType
-  isEditMode: boolean
-  originalSectionsCount: number
-  onSelectSurveySettings: () => void
-  onSelectQuestion: (sectionIndex: number, questionIndex: number) => void
-  onUpdateSectionTitle: (sectionIndex: number, title: string) => void
-  onUpdateSectionDescription: (sectionIndex: number, description: string) => void
-  onDeleteSection: (sectionIndex: number) => void
-  onDeleteQuestion: (sectionIndex: number, questionIndex: number) => void
-  onAddQuestion: (sectionIndex: number) => void
-  onAddSection: () => void
-}) {
-  // Convert new sections format to legacy format for existing SurveyNavigation
-  const legacySections: CreateSurveySection[] = sections.map(section => ({
-    title: section.title,
-    description: section.description,
-    surveyEntries: section.entries.map(entry => ({
-      question: entry.question,
-      questionImage: entry.questionImage,
-      questionType: entry.questionType,
-      choices: entry.choices.map(c => ({ choice: c.choiceText, choiceImage: c.choiceImage })),
-      allowTextAnswer: entry.hasTextInput || false,
-      rows: entry.gridRows.map(r => r.rowText),
-      required: entry.isRequired,
-      questionNumber: entry.questionNumber,
-      followUp: entry.isFollowUp,
-    }))
-  }))
-
-  return (
-    <SurveyNavigation
-      sections={legacySections}
-      selectedSection={selectedSection}
-      selectedQuestion={selectedQuestion}
-      editMode={editMode}
-      surveyName={surveyName}
-      surveyType={surveyType}
-      isEditMode={isEditMode}
-      originalSectionsCount={originalSectionsCount}
-      onSelectSurveySettings={onSelectSurveySettings}
-      onSelectQuestion={onSelectQuestion}
-      onUpdateSectionTitle={onUpdateSectionTitle}
-      onUpdateSectionDescription={onUpdateSectionDescription}
-      onDeleteSection={onDeleteSection}
-      onDeleteQuestion={onDeleteQuestion}
-      onAddQuestion={onAddQuestion}
-      onAddSection={onAddSection}
-    />
-  )
-}
-
-// =============================================================================
-// New Preview Component (adapts new types to existing QuestionPreview)
-// =============================================================================
-
-function QuestionPreviewNew({ question }: { question: SurveyEntryForm }) {
-  // Convert new question format to legacy format for existing QuestionPreview
-  const legacyQuestion: CreateSurveyEntry = {
-    question: question.question,
-    questionImage: question.questionImage,
-    questionImageFile: question.questionImageFile,
-    questionType: question.questionType,
-    choices: question.choices.map(c => ({
-      choice: c.choiceText,
-      choiceImage: c.choiceImage,
-      choiceImageFile: c.choiceImageFile
-    })),
-    allowTextAnswer: question.hasTextInput || false,
-    rows: question.gridRows.map(r => r.rowText),
-    required: question.isRequired,
-    questionNumber: question.questionNumber,
-    followUp: question.isFollowUp,
-  }
-
-  return <QuestionPreview question={legacyQuestion} />
 }

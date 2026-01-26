@@ -28,7 +28,9 @@ import {
   getDefaultQuestionFields,
   emptyChoice,
   createEmptyFollowUp,
-  useDeleteChoice 
+  useDeleteChoice,
+  useUnlinkFollowUp,
+  useLinkFollowUp
 } from "@/lib/hooks/useSurvey"
 
 interface SingleQuestionEditorProps {
@@ -55,6 +57,10 @@ export function SingleQuestionEditor({
   // API hooks for choice delete operations
   const { deleteChoice, isLoading: isDeletingChoice } = useDeleteChoice()
   
+  // API hooks for follow-up link/unlink operations
+  const { unlinkFollowUpAsync, isLoading: isUnlinkingFollowUp } = useUnlinkFollowUp()
+  const { linkFollowUpAsync, isLoading: isLinkingFollowUp } = useLinkFollowUp()
+  
   // UI state
   const [expandedFollowUps, setExpandedFollowUps] = useState<Record<string, boolean>>({})
   
@@ -69,6 +75,19 @@ export function SingleQuestionEditor({
     choiceIndex: -1,
     choiceText: "",
     choiceId: ""
+  });
+
+  // Unlink follow-up confirmation dialog state
+  const [unlinkFollowUpDialog, setUnlinkFollowUpDialog] = useState<{
+    isOpen: boolean;
+    choiceIndex: number;
+    followUpEntryId: string;
+    choiceText: string;
+  }>({
+    isOpen: false,
+    choiceIndex: -1,
+    followUpEntryId: "",
+    choiceText: ""
   });
 
   // Question type change warning dialog state
@@ -179,9 +198,23 @@ export function SingleQuestionEditor({
     }
   }
 
-  // Follow-up question management (NEW - like Evaluation)
+  // Follow-up question management
   const toggleChoiceFollowUp = (choiceIndex: number, hasFollowUp: boolean) => {
     const choice = question.choices[choiceIndex]
+    
+    // If UNCHECKING follow-up on an existing follow-up question (has server ID)
+    // Show confirmation dialog and call unlink API
+    if (!hasFollowUp && choice.hasFollowUp && choice.followUpQuestion?.id && isEditMode) {
+      setUnlinkFollowUpDialog({
+        isOpen: true,
+        choiceIndex,
+        followUpEntryId: choice.followUpQuestion.id,
+        choiceText: choice.choiceText || `Choice ${choiceIndex + 1}`
+      })
+      return
+    }
+    
+    // For CHECKING (adding) follow-up or unchecking a new (unsaved) follow-up
     const updatedChoice: SurveyChoiceForm = {
       ...choice,
       hasFollowUp,
@@ -196,6 +229,28 @@ export function SingleQuestionEditor({
     
     if (hasFollowUp) {
       setExpandedFollowUps(prev => ({ ...prev, [choice.clientId]: true }))
+    }
+  }
+
+  // Handle confirmed unlink of follow-up question
+  const handleConfirmUnlinkFollowUp = async () => {
+    if (!unlinkFollowUpDialog.followUpEntryId) return
+    
+    try {
+      await unlinkFollowUpAsync(unlinkFollowUpDialog.followUpEntryId)
+      
+      // Update local state to remove follow-up
+      const choice = question.choices[unlinkFollowUpDialog.choiceIndex]
+      updateChoice(unlinkFollowUpDialog.choiceIndex, {
+        ...choice,
+        hasFollowUp: false,
+        followUpQuestion: undefined
+      })
+      
+      setUnlinkFollowUpDialog({ isOpen: false, choiceIndex: -1, followUpEntryId: "", choiceText: "" })
+      onRefreshSurveyData?.()
+    } catch (error) {
+      console.error("Failed to unlink follow-up:", error)
     }
   }
 
@@ -768,6 +823,45 @@ export function SingleQuestionEditor({
               className="bg-amber-600 hover:bg-amber-700 text-white"
             >
               Yes, Change Type
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Unlink Follow-up Question Confirmation Dialog */}
+      <AlertDialog 
+        open={unlinkFollowUpDialog.isOpen} 
+        onOpenChange={(open) => !open && setUnlinkFollowUpDialog({ isOpen: false, choiceIndex: -1, followUpEntryId: "", choiceText: "" })}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Follow-up Question?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <div className="space-y-3">
+                <p>
+                  Are you sure you want to remove the follow-up question for choice <strong>&quot;{unlinkFollowUpDialog.choiceText}&quot;</strong>?
+                </p>
+                <p className="text-sm text-amber-600 bg-amber-50 p-3 rounded-lg border border-amber-200">
+                  ⚠️ The follow-up question will be unlinked from this choice. It will become a standalone question if you want to keep it, or you can delete it separately.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isUnlinkingFollowUp}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmUnlinkFollowUp}
+              disabled={isUnlinkingFollowUp}
+              className="bg-amber-600 hover:bg-amber-700 text-white"
+            >
+              {isUnlinkingFollowUp ? (
+                <div className="flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                  <span>Unlinking...</span>
+                </div>
+              ) : (
+                "Yes, Remove Follow-up"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

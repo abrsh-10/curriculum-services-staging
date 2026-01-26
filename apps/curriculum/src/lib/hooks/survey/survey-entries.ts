@@ -768,6 +768,104 @@ export function useReorderGridRow() {
 }
 
 // =============================================================================
+// FOLLOW-UP LINK/UNLINK HOOKS
+// =============================================================================
+
+/**
+ * Hook for unlinking a follow-up question from its parent
+ * DELETE /v2/survey-entries/{followUpEntryId}/unlink-followup
+ * 
+ * Use this when user unchecks the "follow-up" checkbox on an existing follow-up question.
+ * This removes the follow-up relationship but keeps the question as a standalone.
+ */
+export function useUnlinkFollowUp() {
+  const queryClient = useQueryClient();
+
+  const unlinkFollowUpMutation = useMutation({
+    mutationFn: async (followUpEntryId: string) => {
+      const token = getCookie("token");
+      const response = await axios.delete(
+        `${process.env.NEXT_PUBLIC_API}/v2/survey-entries/${followUpEntryId}/unlink-followup`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      return response.data;
+    },
+    onSuccess: (data) => {
+      toast.success(data.message || "Follow-up question unlinked successfully");
+      queryClient.invalidateQueries({ queryKey: surveyQueryKeys.all });
+    },
+    onError: (error: AxiosError<ApiErrorResponse>) => {
+      toast.error(error.response?.data?.message || "Failed to unlink follow-up question");
+    },
+  });
+
+  return {
+    unlinkFollowUp: unlinkFollowUpMutation.mutate,
+    unlinkFollowUpAsync: unlinkFollowUpMutation.mutateAsync,
+    isLoading: unlinkFollowUpMutation.isPending,
+    isSuccess: unlinkFollowUpMutation.isSuccess,
+    isError: unlinkFollowUpMutation.isError,
+    error: unlinkFollowUpMutation.error,
+  };
+}
+
+/**
+ * Hook for linking a question as a follow-up to a parent question
+ * POST /v2/survey-entries/{followUpEntryId}/link-followup?parentQuestionId={id}&triggerChoiceIds={ids}
+ * 
+ * Use this when:
+ * - User checks a choice to add a follow-up to it
+ * - User changes the trigger choices for an existing follow-up
+ */
+export function useLinkFollowUp() {
+  const queryClient = useQueryClient();
+
+  const linkFollowUpMutation = useMutation({
+    mutationFn: async ({
+      followUpEntryId,
+      parentQuestionId,
+      triggerChoiceIds,
+    }: {
+      followUpEntryId: string;
+      parentQuestionId: string;
+      triggerChoiceIds: string[];
+    }) => {
+      const token = getCookie("token");
+      
+      // Build query string with trigger choice IDs
+      const triggerParams = triggerChoiceIds.map(id => `triggerChoiceIds=${id}`).join('&');
+      
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_API}/v2/survey-entries/${followUpEntryId}/link-followup?parentQuestionId=${parentQuestionId}&${triggerParams}`,
+        {},
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+      return response.data;
+    },
+    onSuccess: (data) => {
+      toast.success(data.message || "Follow-up question linked successfully");
+      queryClient.invalidateQueries({ queryKey: surveyQueryKeys.all });
+    },
+    onError: (error: AxiosError<ApiErrorResponse>) => {
+      toast.error(error.response?.data?.message || "Failed to link follow-up question");
+    },
+  });
+
+  return {
+    linkFollowUp: linkFollowUpMutation.mutate,
+    linkFollowUpAsync: linkFollowUpMutation.mutateAsync,
+    isLoading: linkFollowUpMutation.isPending,
+    isSuccess: linkFollowUpMutation.isSuccess,
+    isError: linkFollowUpMutation.isError,
+    error: linkFollowUpMutation.error,
+  };
+}
+
+// =============================================================================
 // DELETE HOOKS
 // =============================================================================
 

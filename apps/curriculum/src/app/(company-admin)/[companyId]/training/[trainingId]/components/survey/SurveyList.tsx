@@ -1,6 +1,6 @@
 "use client"
 
-import { Survey } from "@/lib/hooks/useSurvey"
+import { SurveySummary } from "@/lib/hooks/survey-types"
 import { SurveyCard } from "./SurveyCard"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -9,7 +9,7 @@ import { SurveyDeleteDialog } from "./SurveyDeleteDialog"
 import { useState } from "react"
 
 interface SurveyListProps {
-  surveys: Survey[]
+  surveys: SurveySummary[]
   onCreateNew: () => void
   onViewSurvey: (surveyId: string) => void
   onEditSurvey: (surveyId: string) => void
@@ -25,12 +25,12 @@ export function SurveyList({
   onDeleteSurvey,
   isDeletingSurvey
 }: SurveyListProps) {
-  const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; survey: Survey | null }>({
+  const [deleteDialog, setDeleteDialog] = useState<{ isOpen: boolean; survey: SurveySummary | null }>({
     isOpen: false,
     survey: null
   })
 
-  const handleDeleteClick = (survey: Survey) => {
+  const handleDeleteClick = (survey: SurveySummary) => {
     setDeleteDialog({ isOpen: true, survey })
   }
 

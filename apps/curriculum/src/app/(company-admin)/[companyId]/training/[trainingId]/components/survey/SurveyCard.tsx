@@ -3,10 +3,10 @@
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { PencilIcon, Trash2, ClipboardList } from "lucide-react"
-import { Survey } from "@/lib/hooks/useSurvey"
+import { SurveySummary } from "@/lib/hooks/survey-types"
 
 interface SurveyCardProps {
-  survey: Survey
+  survey: SurveySummary
   onDelete: () => void
   onView: () => void
   onEdit: () => void
