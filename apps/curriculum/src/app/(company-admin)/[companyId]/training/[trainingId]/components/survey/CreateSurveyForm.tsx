@@ -719,7 +719,11 @@ export function CreateSurveyForm({
         const promise = new Promise<void>((resolve) => {
           updateSection({ 
             sectionId: current.id!, 
-            data: { title: current.title, description: current.description }
+            data: { 
+              title: current.title, 
+              description: current.description,
+              sectionNumber: current.sectionNumber || si + 1
+            }
           }, {
             onSuccess: () => { trackSuccess(); resolve() },
             onError: () => { trackFailure(); resolve() }

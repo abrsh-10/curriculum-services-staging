@@ -50,9 +50,16 @@ export function ViewSurveyDetails({
   const handleSaveSectionTitle = (sectionId: string) => {
     if (!editingSectionTitle.trim()) return
     
+    // Find the section to get its sectionNumber
+    const section = surveyDetail.sections.find(s => s.id === sectionId)
+    
     updateSurveySection({ 
       sectionId, 
-      data: { title: editingSectionTitle.trim() }
+      data: { 
+        title: editingSectionTitle.trim(),
+        description: section?.description || undefined,
+        sectionNumber: section?.sectionNumber
+      }
     }, {
       onSuccess: () => {
         setEditingSectionId(null)
