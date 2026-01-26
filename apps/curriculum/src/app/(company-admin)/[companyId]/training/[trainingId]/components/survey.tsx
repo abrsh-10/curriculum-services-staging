@@ -4,16 +4,14 @@ import { useState } from "react"
 import { Loading } from "@/components/ui/loading"
 import { AlertCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { toast } from "sonner"
+import { SurveyType } from "@/lib/hooks/survey-types"
 import { 
   useSurveys,
-  useSurveyDetail,
+  useSurveyDetailNew,
   useUpdateSurvey,
   useDeleteSurvey,
   useDeleteSurveyEntry,
   useDeleteSurveySection,
-  CreateSurveyData,
-  SurveyType
 } from "@/lib/hooks/useSurvey"
 import { 
   SurveyList,
@@ -40,12 +38,12 @@ export function SurveyComponent({ trainingId }: SurveyComponentProps) {
     refetch: refetchSurveys
   } = useSurveys(trainingId)
   
-  // Fetch survey details when viewing or editing
+  // Fetch survey details when viewing or editing (using v2 API format)
   const { 
     data: surveyDetailData, 
     isLoading: isLoadingSurveyDetails,
     refetch: refetchSurveyDetails
-  } = useSurveyDetail(currentSurveyId || "", undefined)
+  } = useSurveyDetailNew(currentSurveyId || "")
   
   // Mutation hooks
   const { deleteSurvey, isLoading: isDeletingSurvey } = useDeleteSurvey()
@@ -106,18 +104,14 @@ export function SurveyComponent({ trainingId }: SurveyComponentProps) {
   }
 
   // Form submission handlers
-  const handleCreateSubmit = () => {
-    // CreateSurveyForm handles submission internally via useCreateSurveyNew
-    refetchSurveys()
-    handleBackToList()
-  }
-
-  // Edit submit handler - CreateSurveyForm now handles all operations internally
-  // This handler is kept for backward compatibility but simplified
-  const handleEditSubmit = (_data: CreateSurveyData) => {
-    // CreateSurveyForm handles all add/update operations internally via v2 API hooks
+  const handleSubmitComplete = () => {
+    // CreateSurveyForm handles submission internally via v2 API hooks
     // This callback is triggered after operations complete
-    setFocusSection(undefined);
+    refetchSurveys()
+    setFocusSection(undefined)
+    if (!currentSurveyId) {
+      handleBackToList()
+    }
   }
 
   const handleUpdateSubmit = (data: { surveyId: string; data: { name: string; type: SurveyType; description: string } }) => {
@@ -214,7 +208,7 @@ export function SurveyComponent({ trainingId }: SurveyComponentProps) {
             handleBackToList()
             setFocusSection(undefined) // Clear focus when canceling
           }}
-          onSubmit={currentSurveyId ? handleEditSubmit : handleCreateSubmit}
+          onSubmit={handleSubmitComplete}
           isSubmitting={isDeletingQuestion || isDeletingSection}
           editingSurveyId={currentSurveyId || undefined}
           initialSurveyName={surveyDetail?.name}

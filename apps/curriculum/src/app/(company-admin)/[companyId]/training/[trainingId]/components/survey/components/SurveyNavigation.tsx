@@ -5,11 +5,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Trash2 } from "lucide-react"
-import { CreateSurveySection, SurveyType } from "@/lib/hooks/useSurvey"
+import { SurveySectionForm, SurveyType } from "@/lib/hooks/survey-types"
 import { SurveyDeleteDialog } from "../SurveyDeleteDialog"
 
 interface SurveyNavigationProps {
-  sections: CreateSurveySection[]
+  sections: SurveySectionForm[]
   selectedSection: number
   selectedQuestion: number
   editMode: 'survey' | 'question'
@@ -153,7 +153,7 @@ export function SurveyNavigation({
             </div>
             
             <div className="p-2 space-y-1">
-              {section.surveyEntries.map((entry, questionIndex) => (
+              {section.entries.map((entry, questionIndex) => (
                 <div
                   key={questionIndex}
                   className={`p-2 rounded cursor-pointer transition-all ${
@@ -175,7 +175,7 @@ export function SurveyNavigation({
                         <span className="text-[10px] text-gray-500">(Parent)</span>
                       )}
                     </div>
-                    {section.surveyEntries.length > 1 && (
+                    {section.entries.length > 1 && (
                       <Button
                         variant="ghost"
                         size="sm"

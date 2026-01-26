@@ -6,10 +6,15 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { PencilIcon, Plus, FileText, CheckCircle, Square, Grid3X3, Trash2, Check, X, Edit, ChevronDown, ChevronRight, ArrowRight } from "lucide-react"
-import { SurveyDetail, SurveyEntry, QuestionType, useUpdateSurveySection, useDeleteSurveySection } from "@/lib/hooks/useSurvey"
+import { 
+  SurveyDetailResponse, 
+  SurveyEntryResponse, 
+  SurveyQuestionType 
+} from "@/lib/hooks/survey-types"
+import { useUpdateSurveySection, useDeleteSurveySection } from "@/lib/hooks/useSurvey"
 
 interface ViewSurveyDetailsProps {
-  surveyDetail: SurveyDetail
+  surveyDetail: SurveyDetailResponse
   onBackToList: () => void
   onEditSurvey: (surveyId: string) => void
   onEditSurveyStructure: (surveyId: string, options?: {
@@ -45,10 +50,16 @@ export function ViewSurveyDetails({
   const handleSaveSectionTitle = (sectionId: string) => {
     if (!editingSectionTitle.trim()) return
     
-    // Use new v2 API format
+    // Find the section to get its sectionNumber
+    const section = surveyDetail.sections.find(s => s.id === sectionId)
+    
     updateSurveySection({ 
       sectionId, 
-      data: { title: editingSectionTitle.trim() }
+      data: { 
+        title: editingSectionTitle.trim(),
+        description: section?.description || undefined,
+        sectionNumber: section?.sectionNumber
+      }
     }, {
       onSuccess: () => {
         setEditingSectionId(null)
@@ -93,7 +104,7 @@ export function ViewSurveyDetails({
   }
   
   // Question Type Icon Component
-  const QuestionTypeIcon = ({ type }: { type: QuestionType }) => {
+  const QuestionTypeIcon = ({ type }: { type: SurveyQuestionType }) => {
     switch (type) {
       case 'TEXT':
         return <FileText className="h-4 w-4" />
@@ -109,7 +120,7 @@ export function ViewSurveyDetails({
   }
 
   // Question Type Badge
-  const QuestionTypeBadge = ({ type }: { type: QuestionType }) => {
+  const QuestionTypeBadge = ({ type }: { type: SurveyQuestionType }) => {
     const colors = {
       TEXT: "bg-green-100 text-green-700",
       RADIO: "bg-blue-100 text-blue-700", 
@@ -126,11 +137,9 @@ export function ViewSurveyDetails({
   }
 
   // Compact Question Preview Component
-  const QuestionPreview = ({ question, questionNumber }: { question: SurveyEntry; questionNumber: number }) => {
-    const getChoicesPreview = (choices: string[] | any[]) => {
-      const choiceTexts = choices.map(choice => 
-        typeof choice === 'string' ? choice : (choice?.choiceText || choice?.choice || 'Option')
-      );
+  const QuestionPreview = ({ entry, questionNumber }: { entry: SurveyEntryResponse; questionNumber: number }) => {
+    const getChoicesPreview = () => {
+      const choiceTexts = entry.choices.map(choice => choice.choiceText || 'Option');
       if (choiceTexts.length <= 3) {
         return choiceTexts.join(", ");
       }
@@ -138,36 +147,43 @@ export function ViewSurveyDetails({
     };
 
     const getQuestionDetails = () => {
-      switch (question.questionType) {
+      switch (entry.questionType) {
         case 'TEXT':
           return "Text response";
         case 'RADIO':
-          return `Single choice: ${getChoicesPreview(question.choices)}`;
+          return `Single choice: ${getChoicesPreview()}`;
         case 'CHECKBOX':
-          return `Multiple choice: ${getChoicesPreview(question.choices)}`;
+          return `Multiple choice: ${getChoicesPreview()}`;
         case 'GRID':
-          return `Grid: ${question.rows.length} rows × ${question.choices.length} columns`;
+          return `Grid: ${entry.gridRows.length} rows × ${entry.choices.length} columns`;
         default:
           return "Unknown type";
       }
     };
 
+    // Find trigger choice text for follow-up questions
+    const getTriggerInfo = () => {
+      if (!entry.isFollowUp || !entry.parentQuestionId) return null;
+      // We don't have parent question details in this view, just show it's a follow-up
+      return entry.triggerChoiceIds?.length ? `Triggered by ${entry.triggerChoiceIds.length} choice(s)` : null;
+    };
+
     return (
       <div className={`flex items-center gap-3 py-2 px-3 rounded-lg hover:bg-gray-100 transition-colors ${
-        question.followUp ? 'bg-amber-50 border-l-4 border-amber-400' : 'bg-gray-50'
+        entry.isFollowUp ? 'bg-amber-50 border-l-4 border-amber-400' : 'bg-gray-50'
       }`}>
         <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-medium shrink-0 ${
-          question.followUp ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-600'
+          entry.isFollowUp ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-600'
         }`}>
           {questionNumber}
         </span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
-            <QuestionTypeBadge type={question.questionType} />
-            {question.required && (
+            <QuestionTypeBadge type={entry.questionType} />
+            {entry.isRequired && (
               <span className="text-red-500 text-xs font-medium">Required</span>
             )}
-            {question.followUp && (
+            {entry.isFollowUp && (
               <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">
                 <ArrowRight className="h-3 w-3" />
                 Follow-up
@@ -175,15 +191,15 @@ export function ViewSurveyDetails({
             )}
           </div>
           <p className="font-medium text-gray-900 text-sm truncate mb-1">
-            {question.question}
+            {entry.question}
           </p>
           <div className="space-y-1">
             <p className="text-xs text-gray-500">
               {getQuestionDetails()}
             </p>
-            {question.followUp && question.parentQuestionNumber && question.parentChoice && (
+            {entry.isFollowUp && getTriggerInfo() && (
               <p className="text-xs text-amber-600 font-medium">
-                ↳ Follows Q{question.parentQuestionNumber} → Choice "{question.parentChoice}"
+                ↳ {getTriggerInfo()}
               </p>
             )}
           </div>
@@ -191,6 +207,7 @@ export function ViewSurveyDetails({
       </div>
     )
   }
+
   return (
     <div className="px-[7%] py-6">
       {/* Header */}
@@ -209,9 +226,9 @@ export function ViewSurveyDetails({
           </p>
           <div className="flex items-center gap-6 text-sm text-gray-500">
             <span>{surveyDetail?.sections?.length || 0} sections</span>
-            <span>{surveyDetail?.sections?.reduce((total, section) => total + section.questions.length, 0) || 0} questions</span>
+            <span>{surveyDetail?.sections?.reduce((total, section) => total + section.entries.length, 0) || 0} questions</span>
             <span>{surveyDetail?.sections?.reduce((total, section) => 
-              total + section.questions.filter(q => q.required).length, 0
+              total + section.entries.filter(e => e.isRequired).length, 0
             ) || 0} required</span>
           </div>
         </div>
@@ -242,28 +259,28 @@ export function ViewSurveyDetails({
             let questionCounter = 0;
             // Calculate starting question number for this section
             for (let i = 0; i < sectionIndex; i++) {
-              questionCounter += surveyDetail.sections[i].questions.length;
+              questionCounter += surveyDetail.sections[i].entries.length;
             }
             
             return (
-              <Card key={sectionIndex} className="overflow-hidden">
+              <Card key={section.id} className="overflow-hidden">
                 <div className="p-4 border-b bg-gray-50/50">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3 flex-1">
                       <Button
-                        onClick={() => toggleSectionCollapse(section.id || `section-${sectionIndex}`)}
+                        onClick={() => toggleSectionCollapse(section.id)}
                         variant="ghost"
                         size="sm"
                         className="p-1 h-6 w-6"
                       >
-                        {collapsedSections.has(section.id || `section-${sectionIndex}`) ? (
+                        {collapsedSections.has(section.id) ? (
                           <ChevronRight className="h-4 w-4" />
                         ) : (
                           <ChevronDown className="h-4 w-4" />
                         )}
                       </Button>
                       
-                      {editingSectionId === (section.id || `section-${sectionIndex}`) ? (
+                      {editingSectionId === section.id ? (
                         <div className="flex items-center gap-2 flex-1">
                           <Input
                             value={editingSectionTitle}
@@ -273,7 +290,7 @@ export function ViewSurveyDetails({
                             disabled={isUpdatingSection}
                           />
                           <Button
-                            onClick={() => handleSaveSectionTitle(section.id || `section-${sectionIndex}`)}
+                            onClick={() => handleSaveSectionTitle(section.id)}
                             size="sm"
                             variant="default"
                             disabled={!editingSectionTitle.trim() || isUpdatingSection}
@@ -297,7 +314,7 @@ export function ViewSurveyDetails({
                          {section.title}
                               </h3>
                               <Button
-                                onClick={() => handleEditSectionTitle(section.id || `section-${sectionIndex}`, section.title)}
+                                onClick={() => handleEditSectionTitle(section.id, section.title)}
                                 size="sm"
                                 variant="ghost"
                                 className="p-1 h-5 w-5 text-gray-400 hover:text-gray-600"
@@ -306,7 +323,7 @@ export function ViewSurveyDetails({
                               </Button>
                             </div>
                             <p className="text-gray-500 text-sm">
-                              {section.questions.length} question{section.questions.length !== 1 ? 's' : ''}
+                              {section.entries.length} question{section.entries.length !== 1 ? 's' : ''}
                             </p>
                           </div>
                         </div>
@@ -314,11 +331,11 @@ export function ViewSurveyDetails({
                     </div>
                     
                     <div className="flex items-center gap-1">
-                      {section.questions.length > 0 && (
+                      {section.entries.length > 0 && (
                         <Button
                           onClick={() => onEditSurveyStructure(surveyDetail.id, {
                             focusSection: {
-                              sectionId: section.id || `section-${sectionIndex}`,
+                              sectionId: section.id,
                               action: 'edit-questions'
                             }
                           })}
@@ -333,7 +350,7 @@ export function ViewSurveyDetails({
                       <Button
                         onClick={() => onEditSurveyStructure(surveyDetail.id, {
                           focusSection: {
-                            sectionId: section.id || `section-${sectionIndex}`,
+                            sectionId: section.id,
                             action: 'add-question'
                           }
                         })}
@@ -345,7 +362,7 @@ export function ViewSurveyDetails({
                         Add
                       </Button>
                       <Button
-                        onClick={() => handleDeleteSection(section.id || `section-${sectionIndex}`, section.title)}
+                        onClick={() => handleDeleteSection(section.id, section.title)}
                         variant="outline"
                         size="sm"
                         className="h-8 px-3 text-red-500 hover:text-red-700 hover:bg-red-50"
@@ -357,15 +374,15 @@ export function ViewSurveyDetails({
                   </div>
                 </div>
                 
-                {!collapsedSections.has(section.id || `section-${sectionIndex}`) && (
+                {!collapsedSections.has(section.id) && (
                   <div className="p-4">
-                    {section.questions.length > 0 ? (
+                    {section.entries.length > 0 ? (
                       <div className="space-y-2">
-                        {section.questions.map((entry, questionIndex) => (
+                        {section.entries.map((entry, entryIndex) => (
                           <QuestionPreview
-                            key={entry.id || questionIndex}
-                            question={entry}
-                            questionNumber={questionCounter + questionIndex + 1}
+                            key={entry.id}
+                            entry={entry}
+                            questionNumber={questionCounter + entryIndex + 1}
                           />
                         ))}
                       </div>
@@ -375,7 +392,7 @@ export function ViewSurveyDetails({
                         <Button
                           onClick={() => onEditSurveyStructure(surveyDetail.id, {
                             focusSection: {
-                              sectionId: section.id || `section-${sectionIndex}`,
+                              sectionId: section.id,
                               action: 'add-question'
                             }
                           })}
@@ -444,4 +461,4 @@ export function ViewSurveyDetails({
       </Dialog>
     </div>
   )
-} 
+}

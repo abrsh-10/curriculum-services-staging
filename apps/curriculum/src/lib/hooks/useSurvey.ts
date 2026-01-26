@@ -13,213 +13,23 @@ export * from "./survey/survey-answers";
 
 import {
   SurveyType,
-  SurveyQuestionType,
   CreateSurveyPayload,
   SurveyDetailApiResponse,
+  SurveysApiResponse,
   ApiErrorResponse,
   surveyQueryKeys,
   transformResponseToForm,
 } from "./survey-types";
 
 // =============================================================================
-// LEGACY TYPES (for backward compatibility during migration)
-// These will be removed once all components are migrated
+// TYPES
 // =============================================================================
 
-/** @deprecated Use SurveyQuestionType from survey-types.ts */
-export type QuestionType = SurveyQuestionType;
-
-/** @deprecated Use SurveyEntryForm from survey-types.ts */
-export interface CreateSurveyEntry {
-  question: string;
-  questionImage?: string;
-  questionImageUrl?: string;
-  questionImageFile?: File;
-  questionType: QuestionType;
-  choices: CreateSurveyChoice[];
-  allowTextAnswer: boolean;
-  rows: string[];
-  required: boolean;
-  questionNumber?: number;
-  parentQuestionNumber?: number;
-  parentChoice?: string;
-  followUp?: boolean;
-}
-
-/** @deprecated Use SurveyChoiceForm from survey-types.ts */
-export interface CreateSurveyChoice {
-  choice: string;
-  choiceImage?: string;
-  choiceImageFile?: File;
-}
-
-/** @deprecated Use SurveySectionForm from survey-types.ts */
-export interface CreateSurveySection {
-  title: string;
-  description?: string;
-  surveyEntries: CreateSurveyEntry[];
-}
-
-/** @deprecated Use CreateSurveyPayload from survey-types.ts */
-export interface CreateSurveyData {
-  name: string;
-  type: SurveyType;
-  description: string;
-  sections: CreateSurveySection[];
-}
-
-// Legacy response types for backward compatibility
-export interface SurveyEntry {
-  id?: string;
-  question: string;
-  questionType: QuestionType;
-  questionImage?: string;
-  questionImageUrl?: string;
-  choices: string[] | SurveyChoice[];
-  allowMultipleAnswers: boolean;
-  allowOtherAnswer: boolean;
-  rows: string[];
-  required: boolean;
-  answer?: string | null;
-  questionNumber?: number;
-  parentQuestionNumber?: number | null;
-  parentChoice?: string | null;
-  followUp?: boolean;
-}
-
-export interface SurveyChoice {
-  order: string;
-  choiceText: string;
-  choiceImageUrl?: string;
-}
-
-export interface SurveySection {
-  id?: string;
-  title: string;
-  description?: string | null;
-  questions: SurveyEntry[];
-}
-
-export interface Survey {
-  id: string;
-  name: string;
-  type: SurveyType | null;
-  description: string;
-  sectionCount: number;
-}
-
-export interface SurveyDetail {
-  id: string;
-  name: string;
-  type: SurveyType | null;
-  description: string;
-  sections: SurveySection[];
-  sessions: null;
-}
-
-export interface SurveysResponse {
-  code: string;
-  surveys: Survey[];
-  message: string;
-}
-
-export interface SurveyDetailResponse_Legacy {
-  code: string;
-  survey: SurveyDetail;
-  message: string;
-}
-
+/** Update survey metadata request */
 export interface UpdateSurveyData {
   name: string;
   type: SurveyType;
   description: string;
-}
-
-/** @deprecated Use UpdateSurveyEntryDataV2 from survey-entries.ts */
-export interface UpdateSurveyEntryData {
-  question: string;
-  questionImage?: string;
-  questionImageFile?: File;
-  questionType: QuestionType;
-  questionNumber?: number;
-  isRequired: boolean;
-  choices: {
-    choice: string;
-    choiceImage?: string;
-    choiceImageFile?: File;
-  }[];
-  allowOtherAnswer: boolean;
-  rows: string[];
-  isFollowUp?: boolean;
-  parentQuestionNumber?: number;
-  parentChoice?: string;
-}
-
-// =============================================================================
-// LEGACY HELPERS (for backward compatibility)
-// =============================================================================
-
-/**
- * Get default question fields in LEGACY format (for SurveyQuestionManager)
- * @deprecated Use getDefaultQuestionFields from survey-types.ts for new components
- */
-export function getDefaultQuestionFieldsLegacy(questionType: QuestionType): {
-  choices: string[];
-  rows: string[];
-  allowTextAnswer: boolean;
-} {
-  switch (questionType) {
-    case "TEXT":
-      return { choices: [], rows: [], allowTextAnswer: false };
-    case "RADIO":
-    case "CHECKBOX":
-      return { choices: ["", ""], rows: [], allowTextAnswer: false };
-    case "GRID":
-      return { choices: ["", ""], rows: ["", ""], allowTextAnswer: false };
-    default:
-      return { choices: [], rows: [], allowTextAnswer: false };
-  }
-}
-
-/**
- * Validate survey entry in LEGACY format (for SurveyQuestionManager)
- * @deprecated Use validateSurveyEntry from survey-types.ts for new components
- */
-export function validateSurveyEntryLegacy(entry: {
-  question: string;
-  questionType: QuestionType;
-  choices: string[];
-  rows: string[];
-}): { isValid: boolean; errors: string[] } {
-  const errors: string[] = [];
-  
-  if (!entry.question.trim()) {
-    errors.push("Question text is required");
-  }
-  
-  if (entry.questionType === "RADIO" || entry.questionType === "CHECKBOX") {
-    if (entry.choices.length < 2) {
-      errors.push("At least 2 choices are required");
-    }
-    const emptyChoices = entry.choices.filter(c => !c.trim());
-    if (emptyChoices.length > 0) {
-      errors.push("All choices must have text");
-    }
-  }
-  
-  if (entry.questionType === "GRID") {
-    if (entry.choices.length < 2) {
-      errors.push("At least 2 column options are required");
-    }
-    if (entry.rows.length < 2) {
-      errors.push("At least 2 row options are required");
-    }
-  }
-  
-  return {
-    isValid: errors.length === 0,
-    errors
-  };
 }
 
 // =============================================================================
@@ -242,7 +52,7 @@ export function useSurveys(trainingId: string) {
             headers: { Authorization: `Bearer ${token}` },
           }
         );
-        return response.data as SurveysResponse;
+        return response.data as SurveysApiResponse;
       } catch (error: unknown) {
         const axiosError = error as AxiosError<ApiErrorResponse>;
         throw new Error(axiosError?.response?.data?.message || "Failed to load surveys");
@@ -252,83 +62,12 @@ export function useSurveys(trainingId: string) {
 }
 
 /**
- * Hook to fetch survey details (with legacy format transformation)
- * GET /v2/surveys/{surveyId}
- */
-export function useSurveyDetail(surveyId: string, traineeId?: string) {
-  return useQuery({
-    queryKey: surveyQueryKeys.detail(surveyId, traineeId),
-    queryFn: async () => {
-      try {
-        const token = getCookie("token");
-        let url = `${process.env.NEXT_PUBLIC_API}/v2/surveys/${surveyId}`;
-        if (traineeId) {
-          url += `?traineeId=${traineeId}`;
-        }
-        
-        const response = await axios.get(url, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        
-        const data = response.data as SurveyDetailApiResponse;
-        
-        // Transform to legacy format for backward compatibility
-        const legacyFormat: SurveyDetailResponse_Legacy = {
-          code: data.code,
-          message: data.message,
-          survey: {
-            id: data.survey.id,
-            name: data.survey.name,
-            type: data.survey.type,
-            description: data.survey.description,
-            sessions: null,
-            sections: data.survey.sections.map(section => ({
-              id: section.id,
-              title: section.title,
-              description: section.description,
-              questions: section.entries.map(entry => ({
-                id: entry.id,
-                questionNumber: entry.questionNumber,
-                question: entry.question,
-                questionType: entry.questionType,
-                questionImageUrl: entry.questionImageUrl || undefined,
-                choices: entry.choices.map(c => ({
-                  order: c.choiceOrder,
-                  choiceText: c.choiceText,
-                  choiceImageUrl: c.choiceImageUrl || undefined
-                })),
-                allowMultipleAnswers: entry.questionType === 'CHECKBOX',
-                allowOtherAnswer: entry.hasTextInput || false,
-                rows: entry.gridRows.map(r => r.rowText),
-                required: entry.isRequired,
-                followUp: entry.isFollowUp,
-                parentQuestionNumber: null,
-                parentChoice: null,
-                isFollowUp: entry.isFollowUp,
-                parentQuestionId: entry.parentQuestionId,
-                triggerChoiceIds: entry.triggerChoiceIds,
-              }))
-            }))
-          }
-        };
-        
-        return legacyFormat;
-      } catch (error: unknown) {
-        const axiosError = error as AxiosError<ApiErrorResponse>;
-        throw new Error(axiosError?.response?.data?.message || "Failed to load survey details");
-      }
-    },
-    enabled: !!surveyId,
-  });
-}
-
-/**
- * Hook to fetch survey details in NEW format (for new components)
+ * Hook to fetch survey details (v2 API format)
  * GET /v2/surveys/{surveyId}
  */
 export function useSurveyDetailNew(surveyId: string) {
   return useQuery({
-    queryKey: [...surveyQueryKeys.detail(surveyId), 'new'] as const,
+    queryKey: surveyQueryKeys.detail(surveyId),
     queryFn: async () => {
       try {
         const token = getCookie("token");
@@ -573,4 +312,3 @@ export function useDeleteSurvey() {
     error: deleteSurveyMutation.error,
   };
 }
-

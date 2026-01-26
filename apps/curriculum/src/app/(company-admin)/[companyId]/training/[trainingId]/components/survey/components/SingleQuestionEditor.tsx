@@ -28,7 +28,8 @@ import {
   getDefaultQuestionFields,
   emptyChoice,
   createEmptyFollowUp,
-  useDeleteChoice 
+  useDeleteChoice,
+  useDeleteSurveyEntry
 } from "@/lib/hooks/useSurvey"
 
 interface SingleQuestionEditorProps {
@@ -52,8 +53,9 @@ export function SingleQuestionEditor({
   onSaveQuestion,
   isSavingQuestion = false
 }: SingleQuestionEditorProps) {
-  // API hooks for choice delete operations
+  // API hooks for delete operations
   const { deleteChoice, isLoading: isDeletingChoice } = useDeleteChoice()
+  const { deleteSurveyEntryAsync, isLoading: isDeletingFollowUp } = useDeleteSurveyEntry()
   
   // UI state
   const [expandedFollowUps, setExpandedFollowUps] = useState<Record<string, boolean>>({})
@@ -69,6 +71,19 @@ export function SingleQuestionEditor({
     choiceIndex: -1,
     choiceText: "",
     choiceId: ""
+  });
+
+  // Delete follow-up confirmation dialog state
+  const [deleteFollowUpDialog, setDeleteFollowUpDialog] = useState<{
+    isOpen: boolean;
+    choiceIndex: number;
+    followUpEntryId: string;
+    choiceText: string;
+  }>({
+    isOpen: false,
+    choiceIndex: -1,
+    followUpEntryId: "",
+    choiceText: ""
   });
 
   // Question type change warning dialog state
@@ -179,9 +194,23 @@ export function SingleQuestionEditor({
     }
   }
 
-  // Follow-up question management (NEW - like Evaluation)
+  // Follow-up question management
   const toggleChoiceFollowUp = (choiceIndex: number, hasFollowUp: boolean) => {
     const choice = question.choices[choiceIndex]
+    
+    // If UNCHECKING follow-up on an existing follow-up question (has server ID)
+    // Show confirmation dialog to DELETE the follow-up entry
+    if (!hasFollowUp && choice.hasFollowUp && choice.followUpQuestion?.id && isEditMode) {
+      setDeleteFollowUpDialog({
+        isOpen: true,
+        choiceIndex,
+        followUpEntryId: choice.followUpQuestion.id,
+        choiceText: choice.choiceText || `Choice ${choiceIndex + 1}`
+      })
+      return
+    }
+    
+    // For CHECKING (adding) follow-up or unchecking a new (unsaved) follow-up
     const updatedChoice: SurveyChoiceForm = {
       ...choice,
       hasFollowUp,
@@ -196,6 +225,28 @@ export function SingleQuestionEditor({
     
     if (hasFollowUp) {
       setExpandedFollowUps(prev => ({ ...prev, [choice.clientId]: true }))
+    }
+  }
+
+  // Handle confirmed delete of follow-up question
+  const handleConfirmDeleteFollowUp = async () => {
+    if (!deleteFollowUpDialog.followUpEntryId) return
+    
+    try {
+      await deleteSurveyEntryAsync(deleteFollowUpDialog.followUpEntryId)
+      
+      // Update local state to remove follow-up
+      const choice = question.choices[deleteFollowUpDialog.choiceIndex]
+      updateChoice(deleteFollowUpDialog.choiceIndex, {
+        ...choice,
+        hasFollowUp: false,
+        followUpQuestion: undefined
+      })
+      
+      setDeleteFollowUpDialog({ isOpen: false, choiceIndex: -1, followUpEntryId: "", choiceText: "" })
+      onRefreshSurveyData?.()
+    } catch (error) {
+      console.error("Failed to delete follow-up:", error)
     }
   }
 
@@ -768,6 +819,45 @@ export function SingleQuestionEditor({
               className="bg-amber-600 hover:bg-amber-700 text-white"
             >
               Yes, Change Type
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Follow-up Question Confirmation Dialog */}
+      <AlertDialog 
+        open={deleteFollowUpDialog.isOpen} 
+        onOpenChange={(open) => !open && setDeleteFollowUpDialog({ isOpen: false, choiceIndex: -1, followUpEntryId: "", choiceText: "" })}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Follow-up Question?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <div className="space-y-3">
+                <p>
+                  Are you sure you want to delete the follow-up question for choice <strong>&quot;{deleteFollowUpDialog.choiceText}&quot;</strong>?
+                </p>
+                <p className="text-sm text-red-600 bg-red-50 p-3 rounded-lg border border-red-200">
+                  ⚠️ This will permanently delete the follow-up question and all its answers. This action cannot be undone.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingFollowUp}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDeleteFollowUp}
+              disabled={isDeletingFollowUp}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {isDeletingFollowUp ? (
+                <div className="flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
+                  <span>Deleting...</span>
+                </div>
+              ) : (
+                "Yes, Delete Follow-up"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
