@@ -20,7 +20,7 @@ import {
   CreateEvaluationPayload,
   EvaluationSummary
 } from "@/lib/hooks/evaluation-types"
-import { useCreateEvaluation, useGetEvaluationDetail, useUpdateEvaluationSection, useAddEvaluationSections, useAddQuestionEntry } from "@/lib/hooks/useEvaluation"
+import { useCreateEvaluation, useGetEvaluationDetail, useUpdateEvaluationSection, useAddEvaluationSections, useAddQuestionEntry, useAddQuestionEntriesBulk } from "@/lib/hooks/useEvaluation"
 import { SectionMetaModal } from "./SectionMetaModal"
 
 // Initial State Helpers
@@ -177,6 +177,7 @@ function CreateEvaluationFormInner({ trainingId, onCancel, editingEvaluation }: 
   const createEvaluation = useCreateEvaluation()
   const addSectionsMutation = useAddEvaluationSections()
   const addQuestionEntryMutation = useAddQuestionEntry()
+  const addQuestionEntriesBulkMutation = useAddQuestionEntriesBulk()
 
   // Section update functions for edit mode
   const updateSectionTitle = (sectionIndex: number, title: string) => {
@@ -681,52 +682,70 @@ function CreateEvaluationFormInner({ trainingId, onCancel, editingEvaluation }: 
                               const entry = section.entries[selectedQuestion]
                               if (!entry) return
 
-                              // If editing within an existing section: POST entry to section
+                              // If editing within an existing section: POST entries to section using bulk endpoint
                               if (section.id) {
-                                // Main question
-                                await addQuestionEntryMutation.mutateAsync({
-                                  sectionId: section.id,
-                                  entry: {
-                                    clientId: entry.clientId,
-                                    question: entry.question,
-                                    questionImage: entry.questionImage,
-                                    questionImageFile: entry.questionImageFile,
-                                    questionType: entry.questionType,
-                                    choices: entry.choices.map((choice) => ({
-                                      clientId: choice.clientId,
-                                      choiceText: choice.choiceText,
-                                      choiceImage: choice.choiceImage,
-                                      choiceImageFile: choice.choiceImageFile
-                                    })),
-                                    isFollowUp: false
-                                  }
+                                // Build all entries (main question + follow-ups) for bulk add
+                                const entriesToAdd: {
+                                  clientId: string;
+                                  question: string;
+                                  questionImage?: string;
+                                  questionImageFile?: File;
+                                  questionType: "TEXT" | "RADIO" | "CHECKBOX";
+                                  choices: {
+                                    clientId: string;
+                                    choiceText: string;
+                                    choiceImage?: string;
+                                    choiceImageFile?: File;
+                                  }[];
+                                  isFollowUp: boolean;
+                                  parentQuestionClientId?: string;
+                                  triggerChoiceClientIds?: string[];
+                                }[] = []
+                                
+                                // Add main question
+                                entriesToAdd.push({
+                                  clientId: entry.clientId,
+                                  question: entry.question,
+                                  questionImage: entry.questionImage,
+                                  questionImageFile: entry.questionImageFile,
+                                  questionType: entry.questionType,
+                                  choices: entry.choices.map((choice) => ({
+                                    clientId: choice.clientId,
+                                    choiceText: choice.choiceText,
+                                    choiceImage: choice.choiceImage,
+                                    choiceImageFile: choice.choiceImageFile
+                                  })),
+                                  isFollowUp: false
                                 })
 
-                                // Follow-ups (if any)
-                                for (const choice of entry.choices) {
+                                // Add follow-ups (if any)
+                                entry.choices.forEach((choice) => {
                                   if (choice.hasFollowUp && choice.followUpQuestion) {
                                     const follow = choice.followUpQuestion
-                                    await addQuestionEntryMutation.mutateAsync({
-                                      sectionId: section.id,
-                                      entry: {
-                                        clientId: follow.clientId,
-                                        question: follow.question,
-                                        questionImage: follow.questionImage,
-                                        questionImageFile: follow.questionImageFile,
-                                        questionType: follow.questionType,
-                                        choices: (follow.choices || []).map((fChoice) => ({
-                                          clientId: fChoice.clientId,
-                                          choiceText: fChoice.choiceText,
-                                          choiceImage: fChoice.choiceImage,
-                                          choiceImageFile: fChoice.choiceImageFile
-                                        })),
-                                        isFollowUp: true,
-                                        parentQuestionClientId: entry.clientId,
-                                        triggerChoiceClientIds: [choice.clientId]
-                                      }
+                                    entriesToAdd.push({
+                                      clientId: follow.clientId,
+                                      question: follow.question,
+                                      questionImage: follow.questionImage,
+                                      questionImageFile: follow.questionImageFile,
+                                      questionType: follow.questionType,
+                                      choices: (follow.choices || []).map((fChoice) => ({
+                                        clientId: fChoice.clientId,
+                                        choiceText: fChoice.choiceText,
+                                        choiceImage: fChoice.choiceImage,
+                                        choiceImageFile: fChoice.choiceImageFile
+                                      })),
+                                      isFollowUp: true,
+                                      parentQuestionClientId: entry.clientId,
+                                      triggerChoiceClientIds: [choice.clientId]
                                     })
                                   }
-                                }
+                                })
+                                
+                                // Use bulk endpoint to add all entries at once
+                                await addQuestionEntriesBulkMutation.mutateAsync({
+                                  sectionId: section.id,
+                                  entries: entriesToAdd
+                                })
                               } else {
                                 // If section not yet persisted, fallback to add whole section approach
                                 const entries: EvaluationEntryPayload[] = []

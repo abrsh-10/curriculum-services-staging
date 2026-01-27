@@ -566,6 +566,106 @@ export function useAddQuestionEntry() {
   })
 }
 
+export function useAddQuestionEntriesBulk() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      sectionId,
+      entries,
+    }: {
+      sectionId: string;
+      entries: {
+        clientId: string;
+        question: string;
+        questionImage?: string;
+        questionImageFile?: File;
+        questionType: "TEXT" | "RADIO" | "CHECKBOX";
+        choices: {
+          clientId: string;
+          choiceText: string;
+          choiceImage?: string;
+          choiceImageFile?: File;
+        }[];
+        isFollowUp: boolean;
+        parentQuestionClientId?: string;
+        triggerChoiceClientIds?: string[];
+        parentQuestionId?: string;
+        triggerChoiceIds?: string[];
+      }[];
+    }) => {
+      const token = getCookie('token')
+      
+      const formData = new FormData()
+      
+      entries.forEach((entry, ei) => {
+        formData.append(`entries[${ei}].clientId`, entry.clientId)
+        formData.append(`entries[${ei}].question`, entry.question)
+        formData.append(`entries[${ei}].questionType`, entry.questionType)
+        formData.append(`entries[${ei}].isFollowUp`, String(entry.isFollowUp))
+        
+        // Question Image - only send if it's a new File (not URL string)
+        if (entry.questionImageFile instanceof File) {
+          formData.append(`entries[${ei}].questionImage`, entry.questionImageFile)
+        }
+        
+        // Follow-up logic
+        if (entry.isFollowUp) {
+          if (entry.parentQuestionClientId) {
+            formData.append(`entries[${ei}].parentQuestionClientId`, entry.parentQuestionClientId)
+          }
+          if (entry.parentQuestionId) {
+            formData.append(`entries[${ei}].parentQuestionId`, entry.parentQuestionId)
+          }
+          if (entry.triggerChoiceClientIds && entry.triggerChoiceClientIds.length > 0) {
+            entry.triggerChoiceClientIds.forEach((id, idx) => {
+              formData.append(`entries[${ei}].triggerChoiceClientIds[${idx}]`, id)
+            })
+          }
+          if (entry.triggerChoiceIds && entry.triggerChoiceIds.length > 0) {
+            entry.triggerChoiceIds.forEach((id, idx) => {
+              formData.append(`entries[${ei}].triggerChoiceIds[${idx}]`, id)
+            })
+          }
+        }
+        
+        // Choices
+        if (entry.choices && entry.choices.length > 0) {
+          entry.choices.forEach((choice, ci) => {
+            formData.append(`entries[${ei}].choices[${ci}].clientId`, choice.clientId)
+            formData.append(`entries[${ei}].choices[${ci}].choiceText`, choice.choiceText)
+            
+            // Choice Image - only send if it's a new File (not URL string)
+            if (choice.choiceImageFile instanceof File) {
+              formData.append(`entries[${ei}].choices[${ci}].choiceImage`, choice.choiceImageFile)
+            }
+          })
+        }
+      })
+      
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_API}/monitoring-form-entry/monitoring-form-section/${sectionId}/bulk`,
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      )
+      return response.data
+    },
+    onSuccess: () => {
+      toast.success("Success", { description: "Questions added successfully" })
+      queryClient.invalidateQueries({ queryKey: ['evaluation-detail'] })
+      queryClient.invalidateQueries({ queryKey: ['evaluation-sections'] })
+    },
+    onError: (error: AxiosError<ApiErrorResponse>) => {
+      toast.error("Error", { description: error.response?.data?.message || error.message || "Failed to add questions" })
+    }
+  })
+}
+
 // =============================================================================
 // PATCH SECTIONS (Edit existing questions/choices/follow-ups)
 // =============================================================================
