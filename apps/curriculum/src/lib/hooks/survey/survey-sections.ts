@@ -42,15 +42,18 @@ function buildBulkSectionsFormData(sections: BulkSectionPayload[]): FormData {
   const formData = new FormData();
   
   sections.forEach((section, si) => {
-    formData.append(`[${si}].title`, section.title);
+    // Now wrapped inside "sections" array
+    const sectionPrefix = `sections[${si}]`;
+    
+    formData.append(`${sectionPrefix}.title`, section.title);
     if (section.description) {
-      formData.append(`[${si}].description`, section.description);
+      formData.append(`${sectionPrefix}.description`, section.description);
     }
-    formData.append(`[${si}].sectionNumber`, String(section.sectionNumber));
+    formData.append(`${sectionPrefix}.sectionNumber`, String(section.sectionNumber));
     
     // Entries
     section.entries.forEach((entry, ei) => {
-      const prefix = `[${si}].entries[${ei}]`;
+      const prefix = `${sectionPrefix}.entries[${ei}]`;
       
       formData.append(`${prefix}.clientId`, entry.clientId);
       formData.append(`${prefix}.question`, entry.question);
