@@ -12,16 +12,19 @@
     "dev:curriculum": "cd apps/curriculum && PORT=3000 pnpm dev",
     "dev:survey": "cd apps/survey-portal && PORT=3001 pnpm dev",
     "dev:assessment": "cd apps/assessment-portal && PORT=3002 pnpm dev",
-    "dev:all": "concurrently \"pnpm dev:curriculum\" \"pnpm dev:survey\" \"pnpm dev:assessment\"",
+    "dev:trainee": "cd apps/trainee-portal && PORT=3003 pnpm dev",
+    "dev:all": "concurrently \"pnpm dev:curriculum\" \"pnpm dev:survey\" \"pnpm dev:assessment\" \"pnpm dev:trainee\"",
     "build": "turbo run build",
     "build:all": "turbo run build",
     "build:curriculum": "turbo run build --filter=curriculum",
     "build:survey": "turbo run build --filter=survey-portal",
     "build:assessment": "turbo run build --filter=assessment-portal",
+    "build:trainee": "turbo run build --filter=trainee-portal",
     "start": "turbo run start",
     "start:curriculum": "cd apps/curriculum && PORT=3000 pnpm start",
     "start:survey": "cd apps/survey-portal && PORT=3001 pnpm start",
     "start:assessment": "cd apps/assessment-portal && PORT=3002 pnpm start",
+    "start:trainee": "cd apps/trainee-portal && PORT=3003 pnpm start",
     "lint": "turbo run lint"
   },
   "devDependencies": {
@@ -37,5 +40,11 @@
     "@types/papaparse": "^5.3.16",
     "concurrently": "^8.2.2",
     "papaparse": "^5.5.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "@types/react": "^18.2.66",
+      "@types/react-dom": "^18.2.22"
+    }
   }
 }

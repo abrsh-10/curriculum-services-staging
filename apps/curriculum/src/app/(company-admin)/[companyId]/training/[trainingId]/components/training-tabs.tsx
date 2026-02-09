@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils"
 import { useUserRole } from "@/lib/hooks/useUserRole"
 import { Loading } from "@/components/ui/loading"
 
-export type TabType = 'overview' | 'profile' | 'audience' | 'module' | 'evaluation' | 'students' | 'cohorts' | 'attendance' | 'certificate' | 'assessment' | 'cat' | 'survey' | 'content'
+export type TabType = 'overview' | 'profile' | 'audience' | 'module' | 'curriculum-structure' | 'evaluation' | 'students' | 'cohorts' | 'attendance' | 'certificate' | 'assessment' | 'cat' | 'survey' | 'content'
 
 interface TabConfig {
   id: TabType
@@ -85,6 +85,18 @@ export function TrainingTabs({ activeTab, onTabChange }: TrainingTabsProps) {
     const certificateTab = allTabs.find(tab => tab.id === 'certificate')
     if (certificateTab && !visibleTabs.some( tab => tab.id === 'certificate')) {
       visibleTabs = [...visibleTabs, certificateTab]
+    }
+  }
+
+  // Add curriculum structure tab only for training admin
+  if (isTrainingAdmin) {
+    const curriculumStructureTab: TabConfig = { id: 'curriculum-structure', label: 'Curriculum Structure', icon: '/module.svg', activeIcon: '/module_active.svg' }
+    // Insert after the module tab
+    const moduleIndex = visibleTabs.findIndex(tab => tab.id === 'module')
+    if (moduleIndex !== -1) {
+      visibleTabs = [...visibleTabs.slice(0, moduleIndex + 1), curriculumStructureTab, ...visibleTabs.slice(moduleIndex + 1)]
+    } else {
+      visibleTabs = [...visibleTabs, curriculumStructureTab]
     }
   }
 
