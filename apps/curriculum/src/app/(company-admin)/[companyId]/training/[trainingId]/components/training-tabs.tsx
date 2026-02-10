@@ -90,7 +90,7 @@ export function TrainingTabs({ activeTab, onTabChange }: TrainingTabsProps) {
 
   // Add curriculum structure tab only for training admin
   if (isTrainingAdmin) {
-    const curriculumStructureTab: TabConfig = { id: 'curriculum-structure', label: 'Curriculum Structure', icon: '/module.svg', activeIcon: '/module_active.svg' }
+    const curriculumStructureTab: TabConfig = { id: 'curriculum-structure', label: 'Curriculum Structure', icon: '/NewCurriculum.svg', activeIcon: '/NewCurriculumActive.svg' }
     // Insert after the module tab
     const moduleIndex = visibleTabs.findIndex(tab => tab.id === 'module')
     if (moduleIndex !== -1) {
