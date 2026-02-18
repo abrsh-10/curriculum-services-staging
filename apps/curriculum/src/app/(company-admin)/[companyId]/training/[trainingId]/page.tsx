@@ -23,9 +23,8 @@ const CertificateComponent = lazy(() => import("./components/certificate").then(
 const SurveyComponent = lazy(() => import("./components/survey").then(module => ({ default: module.SurveyComponent })))
 const AssessmentComponent = lazy(() => import("./components/assessment").then(module => ({ default: module.AssessmentComponent })))
 const Content = lazy(() => import("./components/content").then(module => ({ default: module.Content })))
-const CurriculumStructureComponent = lazy(() => import("./components/curriculum-structure").then(module => ({ default: module.CurriculumStructure })))
 // Insert new constant VALID_TABS above the component definition
-const VALID_TABS: Array<TabType> = ['overview', 'profile', 'audience', 'module', 'curriculum-structure', 'evaluation', 'students', 'cohorts', 'attendance', 'certificate', 'assessment', 'cat', 'survey'];
+const VALID_TABS: Array<TabType> = ['overview', 'profile', 'audience', 'module', 'evaluation', 'students', 'cohorts', 'attendance', 'certificate', 'assessment', 'cat', 'survey'];
 
 export default function TrainingDetail() {
   const params = useParams()
@@ -82,7 +81,6 @@ export default function TrainingDetail() {
             {activeTab === 'profile' && <TrainingProfile trainingId={training.id} />}
             {activeTab === 'audience' && <AudienceProfile trainingId={training.id}  />}
             {activeTab === 'module' && <ModuleComponent trainingId={training.id} />}
-            {activeTab === 'curriculum-structure' && <CurriculumStructureComponent trainingId={training.id} />}
             {activeTab === 'evaluation' && <EvaluationComponent trainingId={training.id} />}
             {activeTab === 'students' && <StudentsComponent trainingId={training.id} />}
             {activeTab === 'cohorts' && <CohortsComponent trainingId={training.id} />}

@@ -71,6 +71,27 @@ interface ErrorResponse {
   code: string;
 }
 
+interface SingleContentResponse {
+  code: string
+  message: string
+  content: Content
+}
+
+export function useContentById(contentId: string, enabled = true) {
+  return useQuery<Content>({
+    queryKey: ['content', contentId],
+    queryFn: async () => {
+      const token = getCookie('token')
+      const response = await axios.get<SingleContentResponse>(
+        `${process.env.NEXT_PUBLIC_API}/content/${contentId}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      return response.data.content
+    },
+    enabled: enabled && !!contentId,
+  })
+}
+
 export function useGetContents({ trainingId, page = 1, pageSize = 10, searchQuery = "" }: GetContentsParams) {
   return useQuery<ContentResponse>({
     queryKey: ['contents', trainingId, page, pageSize, searchQuery],

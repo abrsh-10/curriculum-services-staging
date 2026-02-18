@@ -1,5 +1,5 @@
 interface TrainingNotFoundProps {
-  type: 'overview' | 'profile' | 'audience' | 'module' | 'curriculum-structure' | 'evaluation' | 'students' | 'sessions' | 'cohorts' | 'attendance' | 'certificate' | 'assessment' | 'cat' | 'survey' | 'content'
+  type: 'overview' | 'profile' | 'audience' | 'module' | 'evaluation' | 'students' | 'sessions' | 'cohorts' | 'attendance' | 'certificate' | 'assessment' | 'cat' | 'survey' | 'content'
 }
 
 const messages = {
@@ -58,10 +58,6 @@ const messages = {
   content: {
     title: 'Content Not Found',
     description: 'We couldn\'t find any content for this training.'
-  },
-  'curriculum-structure': {
-    title: 'Curriculum Structure Not Found',
-    description: 'We couldn\'t find any curriculum structure for this training.'
   }
 }
 

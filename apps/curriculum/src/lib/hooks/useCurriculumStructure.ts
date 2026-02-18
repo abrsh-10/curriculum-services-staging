@@ -3,8 +3,6 @@ import axios from "axios"
 import { toast } from "sonner"
 import { getCookie } from "@curriculum-services/auth"
 
-// ---- Types ----
-
 export interface CurriculumModule {
   id: string
   name: string
@@ -43,14 +41,22 @@ interface ReorderContentItemsPayload {
 }
 
 export interface ModuleContentItem {
-  id: string
+  displayOrder: number
   type: "CONTENT" | "ASSESSMENT" | "SURVEY"
-  name: string
+  id: string
+  title: string
   description: string
-  contentFileType?: string
-  lessonName?: string | null
-  assessmentName?: string | null
-  order?: number
+  lessonId: string | null
+  lessonName: string | null
+  contentLevel: "MODULE" | "LESSON"
+  isRequired: boolean
+  isLocked: boolean
+  lockReason: string | null
+  prerequisiteContentIds: string[] | null
+  unlockDate: string | null
+  dueDate: string | null
+  isOverdue: boolean | null
+  isCompleted: boolean
 }
 
 export interface ModuleContentsResponse {
@@ -63,17 +69,44 @@ export interface ModuleContentsResponse {
   totalCount: number
 }
 
+export interface AvailableContentItem {
+  id: string
+  name: string
+  description: string
+}
+
+interface AvailableItemsResponse {
+  code: string
+  message: string
+  surveys?: AvailableContentItem[]
+  assessments?: AvailableContentItem[]
+}
+
+interface AddContentItemParams {
+  cohortId: string
+  moduleId: string
+  type: "ASSESSMENT" | "SURVEY"
+  contentId: string
+}
+
+interface RemoveContentItemParams {
+  cohortId: string
+  moduleId: string
+  type: "CONTENT" | "ASSESSMENT" | "SURVEY"
+  contentId: string
+}
+
+interface CopyOrderingPayload {
+  sourceCohortId: string
+  moduleId: string
+  targetCohortIds: string[]
+}
+
 interface ApiResponse {
   code: string
   message: string
 }
 
-// ---- Hooks ----
-
-/**
- * Fetch training modules using the paginated endpoint.
- * Returns modules with moduleOrder, lessonCount, contentCount, catCount.
- */
 export function useCurriculumModules(
   trainingId: string,
   page: number = 1,
@@ -96,10 +129,6 @@ export function useCurriculumModules(
   })
 }
 
-/**
- * Fetch content items for a module, optionally scoped to a cohort.
- * GET /api/training-delivery/content-item/module/{moduleId}?cohortId=
- */
 export function useModuleContents(moduleId: string, cohortId?: string) {
   return useQuery<ModuleContentsResponse>({
     queryKey: ["module-contents", moduleId, cohortId],
@@ -118,9 +147,6 @@ export function useModuleContents(moduleId: string, cohortId?: string) {
   })
 }
 
-/**
- * Reorder modules at the training level.
- */
 export function useReorderModules() {
   const queryClient = useQueryClient()
 
@@ -157,9 +183,6 @@ export function useReorderModules() {
   })
 }
 
-/**
- * Reorder content items (lessons, assessments, surveys) within a cohort + module.
- */
 export function useReorderContentItems() {
   const queryClient = useQueryClient()
 
@@ -189,6 +212,138 @@ export function useReorderContentItems() {
         toast.error(
           error.response?.data?.message || "Failed to reorder content items"
         )
+      } else {
+        toast.error("An unexpected error occurred")
+      }
+    },
+  })
+}
+
+export function useAvailableSurveys(cohortId: string, moduleId: string, enabled = true) {
+  return useQuery<AvailableContentItem[]>({
+    queryKey: ["available-surveys", cohortId, moduleId],
+    queryFn: async () => {
+      const token = getCookie("token")
+      const response = await axios.get<AvailableItemsResponse>(
+        `${process.env.NEXT_PUBLIC_API_TRAINING_DELIVERY}/training-delivery/content-item/cohort/${cohortId}/module/${moduleId}/available-surveys`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      return response.data.surveys ?? []
+    },
+    enabled: enabled && !!cohortId && !!moduleId,
+  })
+}
+
+export function useAvailableAssessments(cohortId: string, moduleId: string, enabled = true) {
+  return useQuery<AvailableContentItem[]>({
+    queryKey: ["available-assessments", cohortId, moduleId],
+    queryFn: async () => {
+      const token = getCookie("token")
+      const response = await axios.get<AvailableItemsResponse>(
+        `${process.env.NEXT_PUBLIC_API_TRAINING_DELIVERY}/training-delivery/content-item/cohort/${cohortId}/module/${moduleId}/available-assessments`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      return response.data.assessments ?? []
+    },
+    enabled: enabled && !!cohortId && !!moduleId,
+  })
+}
+
+export function useAddContentItem() {
+  const queryClient = useQueryClient()
+
+  return useMutation<ApiResponse, Error, AddContentItemParams>({
+    mutationFn: async ({ cohortId, moduleId, type, contentId }) => {
+      const token = getCookie("token")
+      const response = await axios.post<ApiResponse>(
+        `${process.env.NEXT_PUBLIC_API_TRAINING_DELIVERY}/training-delivery/content-item/cohort/${cohortId}/module/${moduleId}/add`,
+        null,
+        {
+          params: { type, contentId },
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      )
+      return response.data
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["module-contents", variables.moduleId],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ["available-surveys", variables.cohortId, variables.moduleId],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ["available-assessments", variables.cohortId, variables.moduleId],
+      })
+      toast.success("Content added successfully")
+    },
+    onError: (error) => {
+      if (axios.isAxiosError(error)) {
+        toast.error(error.response?.data?.message || "Failed to add content")
+      } else {
+        toast.error("An unexpected error occurred")
+      }
+    },
+  })
+}
+
+export function useCopyOrdering() {
+  const queryClient = useQueryClient()
+
+  return useMutation<ApiResponse, Error, CopyOrderingPayload>({
+    mutationFn: async (data) => {
+      const token = getCookie("token")
+      const response = await axios.post<ApiResponse>(
+        `${process.env.NEXT_PUBLIC_API_TRAINING_DELIVERY}/training-delivery/content-item/copy-ordering`,
+        data,
+        { headers: { Authorization: `Bearer ${token}` } }
+      )
+      return response.data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["module-contents"] })
+      toast.success("Ordering applied to selected cohorts")
+    },
+    onError: (error) => {
+      if (axios.isAxiosError(error)) {
+        toast.error(error.response?.data?.message || "Failed to copy ordering")
+      } else {
+        toast.error("An unexpected error occurred")
+      }
+    },
+  })
+}
+
+export function useRemoveContentItem() {
+  const queryClient = useQueryClient()
+
+  return useMutation<ApiResponse, Error, RemoveContentItemParams>({
+    mutationFn: async ({ cohortId, moduleId, type, contentId }) => {
+      const token = getCookie("token")
+      const response = await axios.delete<ApiResponse>(
+        `${process.env.NEXT_PUBLIC_API_TRAINING_DELIVERY}/training-delivery/content-item/cohort/${cohortId}/module/${moduleId}/remove`,
+        {
+          params: { type, contentId },
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      )
+      return response.data
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["module-contents", variables.moduleId],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ["available-surveys", variables.cohortId, variables.moduleId],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ["available-assessments", variables.cohortId, variables.moduleId],
+      })
+      toast.success("Content removed successfully")
+    },
+    onError: (error) => {
+      if (axios.isAxiosError(error)) {
+        toast.error(error.response?.data?.message || "Failed to remove content")
       } else {
         toast.error("An unexpected error occurred")
       }
