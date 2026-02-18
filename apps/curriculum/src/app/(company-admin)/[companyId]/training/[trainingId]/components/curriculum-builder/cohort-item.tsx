@@ -104,17 +104,17 @@ export function CohortItem({
     setIsOpen(true)
   }, [])
 
-  const handleExitEdit = useCallback(() => {
-    setIsEditMode(false)
-    setHasModuleChanges(false)
-    setHasContentChanges(false)
-    contentChangesRef.current.clear()
-    if (modules.length) {
-      setOrderedModules(
-        [...modules].sort((a, b) => a.moduleOrder - b.moduleOrder)
-      )
-    }
-  }, [modules])
+  // const handleExitEdit = useCallback(() => {
+  //   setIsEditMode(false)
+  //   setHasModuleChanges(false)
+  //   setHasContentChanges(false)
+  //   contentChangesRef.current.clear()
+  //   if (modules.length) {
+  //     setOrderedModules(
+  //       [...modules].sort((a, b) => a.moduleOrder - b.moduleOrder)
+  //     )
+  //   }
+  // }, [modules])
 
   useEffect(() => {
     if (savedCohortId === cohort.id) {
@@ -163,7 +163,7 @@ export function CohortItem({
                 <Button
                   variant="outline"
                   size="sm"
-                  className="text-xs gap-1.5 border-brand text-brand hover:bg-brand/5"
+                  className="text-xs gap-1.5 border-brand text-brand hover:bg-brand/5 hover:text-brand"
                   onClick={() => setShowApplyModal(true)}
                   disabled={!expandedModuleId || isSaving}
                 >
@@ -199,7 +199,7 @@ export function CohortItem({
                 <Button
                   variant="outline"
                   size="sm"
-                  className="text-xs gap-1.5 border-brand text-brand hover:bg-brand/5"
+                  className="text-xs gap-1.5 border-brand text-brand hover:bg-brand/5 hover:text-brand"
                   onClick={handleEnterEdit}
                 >
                   <svg
