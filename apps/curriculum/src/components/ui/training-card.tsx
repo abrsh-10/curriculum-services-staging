@@ -91,7 +91,7 @@ export function TrainingCard({
   const showDropdown = isCompanyAdmin || isProjectManager
 
   return (
-    <div className="bg-white rounded-lg shadow-custom border-[0.5px] border-[#E4E4E4] p-[20px] relative">
+    <div className="bg-white rounded-lg shadow-custom border-[0.5px] border-[#E4E4E4] p-[22px] relative">
       {showDropdown && (
       <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
         <DropdownMenuTrigger asChild>
