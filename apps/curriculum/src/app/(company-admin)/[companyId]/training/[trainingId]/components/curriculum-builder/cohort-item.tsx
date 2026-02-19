@@ -17,7 +17,7 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
-import { ChevronRight, ChevronUp, Eye, Save, Copy } from "lucide-react"
+import { ChevronRight, ChevronUp, Eye, Save, Copy, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Cohort } from "@/lib/hooks/useCohorts"
 import { CurriculumModule, ContentOrderItem } from "@/lib/hooks/useCurriculumStructure"
@@ -50,6 +50,7 @@ export function CohortItem({
 
   const [isOpen, setIsOpen] = useState(false)
   const [isEditMode, setIsEditMode] = useState(false)
+  const [isNavigatingToPreview, setIsNavigatingToPreview] = useState(false)
   const [orderedModules, setOrderedModules] = useState<CurriculumModule[]>([])
   const [expandedModuleId, setExpandedModuleId] = useState<string>("")
   const [showApplyModal, setShowApplyModal] = useState(false)
@@ -133,6 +134,7 @@ export function CohortItem({
   }, [cohort.id, hasModuleChanges, orderedModules, onSave])
 
   const handlePreviewStructure = useCallback(() => {
+    setIsNavigatingToPreview(true)
     const companyId = params.companyId as string
     const trainingId = params.trainingId as string
     router.push(
@@ -155,10 +157,14 @@ export function CohortItem({
                   size="sm"
                   className="text-xs gap-1.5 text-[#09C3FD] hover:text-[#09C3FD]/70"
                   onClick={handlePreviewStructure}
-                  disabled={isSaving}
+                  disabled={isSaving || isNavigatingToPreview}
                 >
-                  <Eye className="h-3.5 w-3.5" />
-                  Preview Structure
+                  {isNavigatingToPreview ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Eye className="h-3.5 w-3.5" />
+                  )}
+                  {isNavigatingToPreview ? "Loading..." : "Preview Structure"}
                 </Button>
                 <Button
                   variant="outline"
@@ -192,9 +198,14 @@ export function CohortItem({
                   size="sm"
                   className="text-xs gap-1.5 text-[#09C3FD] hover:text-[#09C3FD]/70"
                   onClick={handlePreviewStructure}
+                  disabled={isNavigatingToPreview}
                 >
-                  <Eye className="h-3.5 w-3.5" />
-                  Preview Structure
+                  {isNavigatingToPreview ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Eye className="h-3.5 w-3.5" />
+                  )}
+                  {isNavigatingToPreview ? "Loading..." : "Preview Structure"}
                 </Button>
                 <Button
                   variant="outline"

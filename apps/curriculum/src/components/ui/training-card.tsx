@@ -91,7 +91,7 @@ export function TrainingCard({
   const showDropdown = isCompanyAdmin || isProjectManager
 
   return (
-    <div className="bg-white rounded-lg shadow-custom border-[0.5px] border-[#E4E4E4] p-8 relative">
+    <div className="bg-white rounded-lg shadow-custom border-[0.5px] border-[#E4E4E4] p-[22px] relative">
       {showDropdown && (
       <DropdownMenu open={isDropdownOpen} onOpenChange={setIsDropdownOpen}>
         <DropdownMenuTrigger asChild>
@@ -144,7 +144,7 @@ export function TrainingCard({
       </DropdownMenu>
       )}
 
-      <h3 className="text-xl md:text-2xl font-semibold text-brand mb-4">
+      <h3 className="text-sm md:text-lg font-semibold text-black mb-4">
         {title}
       </h3>
 
@@ -167,10 +167,10 @@ export function TrainingCard({
         {rationale}
       </p>
 
-      <div className="flex items-end justify-end py-3">
+      <div className="flex items-end justify-end ">
         <Button
           variant="link"
-          className="text-brand hover:text-brand-primary p-0 h-auto font-medium text-sm md:text-md flex items-center gap-1 disabled:opacity-70"
+          className="text-brand hover:text-brand-primary p-0 h-auto font-semibold text-sm md:text-md flex items-center gap-1 disabled:opacity-70"
           onClick={handleViewTraining}
           disabled={isNavigating}
         >
