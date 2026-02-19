@@ -157,7 +157,7 @@ export default function CompanyAdminTraining() {
   return (
     <div className="flex min-h-screen w-full lg:px-16 md:px-14 px-4">
       <div className="flex-1 py-12 sm:pl-12">
-        <div className="grid lg:grid-cols-3 md:grid-cols-2 grid-cols-1 gap-6">
+        <div className="grid 2xl:grid-cols-4 lg:grid-cols-3 md:grid-cols-2 grid-cols-1 gap-6">
           {data?.trainings?.map((training) => (
             <TrainingCard
               key={training.id}

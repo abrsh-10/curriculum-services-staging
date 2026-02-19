@@ -2,8 +2,20 @@
 
 import { useState, useCallback, useMemo, useEffect } from "react"
 import { useParams, useSearchParams } from "next/navigation"
-import { ChevronRight, ChevronLeft, FileText, Video, Link2 } from "lucide-react"
-import { Button } from "@/components/ui/button"
+import {
+  ChevronRight,
+  ChevronLeft,
+  FileText,
+  Video,
+  Link2,
+  Clock,
+  RefreshCw,
+  CheckCircle2,
+  AlertCircle,
+  ClipboardList,
+  Layers,
+  Timer,
+} from "lucide-react"
 import { Loading } from "@/components/ui/loading"
 import {
   useCurriculumModules,
@@ -12,17 +24,26 @@ import {
   ModuleContentItem,
 } from "@/lib/hooks/useCurriculumStructure"
 import { useContentById, Content } from "@/lib/hooks/useContent"
+import { useAssessmentDetail, AssessmentDetail } from "@/lib/hooks/useAssessment"
+import { useSurveyDetailNew } from "@/lib/hooks/useSurvey"
+import { SurveyDetailResponse } from "@/lib/hooks/survey-types"
 
 const FILE_TYPE_ICON: Record<string, typeof FileText> = {
   PDF: FileText,
   VIDEO: Video,
   LINK: Link2,
+  CONTENT: FileText,
+  ASSESSMENT: ClipboardList,
+  SURVEY: ClipboardList,
 }
 
 const FILE_TYPE_LABEL: Record<string, string> = {
   PDF: "Pdf",
   VIDEO: "Video",
   LINK: "Link",
+  CONTENT: "Content",
+  ASSESSMENT: "Assessment",
+  SURVEY: "Survey",
 }
 
 function getEmbedUrl(content: Content): string | null {
@@ -195,6 +216,252 @@ function ContentViewer({ content }: { content: Content }) {
   )
 }
 
+function formatDuration(minutes: number): string {
+  if (minutes <= 0) return "No time limit"
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  if (h === 0) return `${m} min`
+  if (m === 0) return `${h}h`
+  return `${h}h ${m}m`
+}
+
+function AssessmentViewer({ assessment }: { assessment: AssessmentDetail }) {
+  const totalQuestions = assessment.sections.reduce(
+    (sum, s) => sum + s.questions.length,
+    0
+  )
+
+  const statusConfig = {
+    APPROVED: { color: "bg-green-100 text-green-700", icon: CheckCircle2 },
+    PENDING: { color: "bg-yellow-100 text-yellow-700", icon: Clock },
+    REJECTED: { color: "bg-red-100 text-red-700", icon: AlertCircle },
+  }
+  const status = statusConfig[assessment.approvalStatus] ?? statusConfig.PENDING
+  const StatusIcon = status.icon
+
+  return (
+    <div className="flex-1 flex flex-col min-h-0">
+      <div className="flex items-center gap-2 px-6 py-3 border-b border-gray-100">
+        <ClipboardList className="w-4 h-4 text-brand" />
+        <span className="font-medium text-sm text-brand">Assessment</span>
+      </div>
+      <div className="flex-1 overflow-y-auto p-6">
+        <div className="max-w-2xl mx-auto space-y-6">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900">
+              {assessment.name}
+            </h2>
+            {assessment.description && (
+              <p className="text-sm text-gray-500 mt-1">
+                {assessment.description}
+              </p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-gray-50 rounded-xl p-4">
+              <div className="flex items-center gap-2 text-gray-400 mb-1">
+                <Timer className="w-3.5 h-3.5" />
+                <span className="text-[11px] font-medium uppercase tracking-wide">
+                  Duration
+                </span>
+              </div>
+              <p className="text-sm font-semibold text-gray-900">
+                {assessment.timed
+                  ? formatDuration(assessment.duration)
+                  : "Untimed"}
+              </p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-4">
+              <div className="flex items-center gap-2 text-gray-400 mb-1">
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span className="text-[11px] font-medium uppercase tracking-wide">
+                  Attempts
+                </span>
+              </div>
+              <p className="text-sm font-semibold text-gray-900">
+                {assessment.maxAttempts}
+              </p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-4">
+              <div className="flex items-center gap-2 text-gray-400 mb-1">
+                <Layers className="w-3.5 h-3.5" />
+                <span className="text-[11px] font-medium uppercase tracking-wide">
+                  Sections
+                </span>
+              </div>
+              <p className="text-sm font-semibold text-gray-900">
+                {assessment.sections.length}
+              </p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-4">
+              <div className="flex items-center gap-2 text-gray-400 mb-1">
+                <ClipboardList className="w-3.5 h-3.5" />
+                <span className="text-[11px] font-medium uppercase tracking-wide">
+                  Questions
+                </span>
+              </div>
+              <p className="text-sm font-semibold text-gray-900">
+                {totalQuestions}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span
+              className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full ${status.color}`}
+            >
+              <StatusIcon className="w-3 h-3" />
+              {assessment.approvalStatus}
+            </span>
+            <span className="text-xs text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full font-medium uppercase">
+              {assessment.type.replace(/_/g, " ")}
+            </span>
+          </div>
+
+          {assessment.sections.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">
+                Sections
+              </h3>
+              <div className="space-y-2">
+                {assessment.sections.map((section) => (
+                  <div
+                    key={section.id}
+                    className="flex items-center justify-between border border-gray-100 rounded-lg px-4 py-3"
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">
+                        {section.title}
+                      </p>
+                      {section.description && (
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {section.description}
+                        </p>
+                      )}
+                    </div>
+                    <span className="text-xs text-gray-400 shrink-0 ml-4">
+                      {section.questions.length} question
+                      {section.questions.length !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SurveyViewer({ survey }: { survey: SurveyDetailResponse }) {
+  const totalEntries = survey.sections.reduce(
+    (sum, s) => sum + s.entries.length,
+    0
+  )
+
+  const typeLabel = survey.type?.replace(/_/g, " ") ?? "Survey"
+
+  return (
+    <div className="flex-1 flex flex-col min-h-0">
+      <div className="flex items-center gap-2 px-6 py-3 border-b border-gray-100">
+        <ClipboardList className="w-4 h-4 text-brand" />
+        <span className="font-medium text-sm text-brand">Survey</span>
+      </div>
+      <div className="flex-1 overflow-y-auto p-6">
+        <div className="max-w-2xl mx-auto space-y-6">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900">
+              {survey.name}
+            </h2>
+            {survey.description && (
+              <p className="text-sm text-gray-500 mt-1">
+                {survey.description}
+              </p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <div className="bg-gray-50 rounded-xl p-4">
+              <div className="flex items-center gap-2 text-gray-400 mb-1">
+                <Layers className="w-3.5 h-3.5" />
+                <span className="text-[11px] font-medium uppercase tracking-wide">
+                  Sections
+                </span>
+              </div>
+              <p className="text-sm font-semibold text-gray-900">
+                {survey.sections.length}
+              </p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-4">
+              <div className="flex items-center gap-2 text-gray-400 mb-1">
+                <ClipboardList className="w-3.5 h-3.5" />
+                <span className="text-[11px] font-medium uppercase tracking-wide">
+                  Questions
+                </span>
+              </div>
+              <p className="text-sm font-semibold text-gray-900">
+                {totalEntries}
+              </p>
+            </div>
+            <div className="bg-gray-50 rounded-xl p-4">
+              <div className="flex items-center gap-2 text-gray-400 mb-1">
+                <Timer className="w-3.5 h-3.5" />
+                <span className="text-[11px] font-medium uppercase tracking-wide">
+                  Estimated Time
+                </span>
+              </div>
+              <p className="text-sm font-semibold text-gray-900">
+                {survey.timeToTakeMinutes
+                  ? `${survey.timeToTakeMinutes} min`
+                  : "Not specified"}
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <span className="text-xs text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full font-medium uppercase">
+              {typeLabel}
+            </span>
+          </div>
+
+          {survey.sections.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">
+                Sections
+              </h3>
+              <div className="space-y-2">
+                {survey.sections.map((section) => (
+                  <div
+                    key={section.id}
+                    className="flex items-center justify-between border border-gray-100 rounded-lg px-4 py-3"
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">
+                        {section.title}
+                      </p>
+                      {section.description && (
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {section.description}
+                        </p>
+                      )}
+                    </div>
+                    <span className="text-xs text-gray-400 shrink-0 ml-4">
+                      {section.entries.length} question
+                      {section.entries.length !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function PreviewPage() {
   const params = useParams()
   const searchParams = useSearchParams()
@@ -215,8 +482,27 @@ export default function PreviewPage() {
   const [selectedContentItem, setSelectedContentItem] =
     useState<ModuleContentItem | null>(null)
 
+  const selectedType = selectedContentItem?.type ?? "CONTENT"
+  const isContent = selectedType === "CONTENT"
+  const isAssessment = selectedType === "ASSESSMENT"
+  const isSurvey = selectedType === "SURVEY"
+
   const { data: selectedContent, isLoading: isContentLoading } =
-    useContentById(selectedContentItem?.id ?? "", !!selectedContentItem)
+    useContentById(
+      selectedContentItem?.id ?? "",
+      !!selectedContentItem && isContent
+    )
+
+  const { data: assessmentData, isLoading: isAssessmentLoading } =
+    useAssessmentDetail(isAssessment ? (selectedContentItem?.id ?? "") : "")
+
+  const { data: surveyData, isLoading: isSurveyLoading } =
+    useSurveyDetailNew(isSurvey ? (selectedContentItem?.id ?? "") : "")
+
+  const isDetailLoading =
+    (isContent && isContentLoading) ||
+    (isAssessment && isAssessmentLoading) ||
+    (isSurvey && isSurveyLoading)
 
   // Auto-expand first module once loaded
   useEffect(() => {
@@ -285,10 +571,14 @@ export default function PreviewPage() {
               </p>
             </div>
           </div>
-        ) : isContentLoading ? (
+        ) : isDetailLoading ? (
           <Loading />
-        ) : selectedContent ? (
+        ) : isContent && selectedContent ? (
           <ContentViewer content={selectedContent} />
+        ) : isAssessment && assessmentData?.assessment ? (
+          <AssessmentViewer assessment={assessmentData.assessment} />
+        ) : isSurvey && surveyData?.survey ? (
+          <SurveyViewer survey={surveyData.survey} />
         ) : (
           <div className="flex-1 flex items-center justify-center text-gray-400">
             Content not found

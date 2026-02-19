@@ -94,7 +94,9 @@ export function SortableContentItem({
         )}
       </div>
 
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+      <AlertDialog open={showDeleteDialog} onOpenChange={(open) => {
+        if (!isRemoving) setShowDeleteDialog(open)
+      }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remove Content</AlertDialogTitle>
@@ -105,7 +107,10 @@ export function SortableContentItem({
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isRemoving}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleConfirmDelete}
+              onClick={(e) => {
+                e.preventDefault()
+                handleConfirmDelete()
+              }}
               disabled={isRemoving}
               className="bg-red-600 hover:bg-red-700 text-white"
             >

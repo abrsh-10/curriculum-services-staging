@@ -171,6 +171,7 @@ export interface SurveyDetailResponse {
   name: string;
   type: SurveyType | null;
   description: string;
+  timeToTakeMinutes: number | null;
   sections: SurveySectionResponse[];
 }
 

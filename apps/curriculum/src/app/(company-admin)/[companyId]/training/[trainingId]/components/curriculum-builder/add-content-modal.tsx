@@ -12,7 +12,8 @@ import {
   useAvailableSurveys,
   useAvailableAssessments,
   useAddContentItem,
-  AvailableContentItem,
+  AvailableAssessment,
+  AvailableSurvey,
 } from "@/lib/hooks/useCurriculumStructure"
 
 type ContentTab = "ASSESSMENT" | "SURVEY"
@@ -41,7 +42,7 @@ export function AddContentModal({
   const { data: surveys, isLoading: isLoadingSurveys } =
     useAvailableSurveys(cohortId, moduleId, open)
 
-  const currentItems: AvailableContentItem[] =
+  const currentItems: (AvailableAssessment | AvailableSurvey)[] =
     activeTab === "ASSESSMENT" ? (assessments ?? []) : (surveys ?? [])
   const isLoadingItems =
     activeTab === "ASSESSMENT" ? isLoadingAssessments : isLoadingSurveys
@@ -143,6 +144,21 @@ export function AddContentModal({
           ) : (
             currentItems.map((item) => {
               const isSelected = selectedIds.has(item.id)
+              const isAssessment = activeTab === "ASSESSMENT"
+              const assessmentItem = isAssessment ? (item as AvailableAssessment) : null
+              const surveyItem = !isAssessment ? (item as AvailableSurvey) : null
+
+              const typeBadge = item.type.replace(/_/g, " ")
+              const sectionLabel = `${item.sectionCount} section${item.sectionCount !== 1 ? "s" : ""}`
+
+              let durationLabel = ""
+              if (assessmentItem && assessmentItem.duration > 0) {
+                const mins = assessmentItem.duration
+                durationLabel = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`
+              } else if (surveyItem?.timeToTakeMinutes) {
+                durationLabel = `${surveyItem.timeToTakeMinutes}m`
+              }
+
               return (
                 <button
                   key={item.id}
@@ -153,23 +169,41 @@ export function AddContentModal({
                       : "border-gray-200 hover:border-gray-300"
                   }`}
                 >
-                  <div className="font-medium text-sm">{item.name}</div>
-                  {item.description && (
-                    <div className="flex items-center gap-1 mt-1 text-xs text-gray-400">
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-medium text-sm truncate">{item.name}</div>
+                    {assessmentItem && (
+                      <span
+                        className={`shrink-0 text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                          assessmentItem.approvalStatus === "APPROVED"
+                            ? "bg-green-100 text-green-700"
+                            : "bg-yellow-100 text-yellow-700"
+                        }`}
                       >
-                        <rect width="18" height="18" x="3" y="3" rx="2" />
-                        <polygon points="10 8 16 12 10 16 10 8" />
-                      </svg>
-                      <span>{item.description}</span>
+                        {assessmentItem.approvalStatus}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1.5 text-xs text-gray-400">
+                    <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded text-[10px] font-medium uppercase">
+                      {typeBadge}
+                    </span>
+                    <span>{sectionLabel}</span>
+                    {durationLabel && (
+                      <>
+                        <span className="text-gray-300">·</span>
+                        <span>{durationLabel}</span>
+                      </>
+                    )}
+                    {assessmentItem && (
+                      <>
+                        <span className="text-gray-300">·</span>
+                        <span>{assessmentItem.maxAttempts} attempt{assessmentItem.maxAttempts !== 1 ? "s" : ""}</span>
+                      </>
+                    )}
+                  </div>
+                  {item.description && (
+                    <div className="mt-1.5 text-xs text-gray-400 truncate">
+                      {item.description}
                     </div>
                   )}
                 </button>

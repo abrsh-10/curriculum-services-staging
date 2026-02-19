@@ -69,17 +69,39 @@ export interface ModuleContentsResponse {
   totalCount: number
 }
 
-export interface AvailableContentItem {
+export interface AvailableAssessment {
   id: string
   name: string
+  type: string
   description: string
+  duration: number
+  maxAttempts: number
+  approvalStatus: string
+  sectionCount: number
+  timed: boolean
 }
 
-interface AvailableItemsResponse {
+export interface AvailableSurvey {
+  id: string
+  name: string
+  type: string
+  description: string
+  timeToTakeMinutes: number | null
+  sectionCount: number
+}
+
+interface AvailableAssessmentsResponse {
   code: string
   message: string
-  surveys?: AvailableContentItem[]
-  assessments?: AvailableContentItem[]
+  totalAvailable: number
+  availableAssessments: AvailableAssessment[]
+}
+
+interface AvailableSurveysResponse {
+  code: string
+  message: string
+  totalAvailable: number
+  availableSurveys: AvailableSurvey[]
 }
 
 interface AddContentItemParams {
@@ -220,30 +242,30 @@ export function useReorderContentItems() {
 }
 
 export function useAvailableSurveys(cohortId: string, moduleId: string, enabled = true) {
-  return useQuery<AvailableContentItem[]>({
+  return useQuery<AvailableSurvey[]>({
     queryKey: ["available-surveys", cohortId, moduleId],
     queryFn: async () => {
       const token = getCookie("token")
-      const response = await axios.get<AvailableItemsResponse>(
+      const response = await axios.get<AvailableSurveysResponse>(
         `${process.env.NEXT_PUBLIC_API_TRAINING_DELIVERY}/training-delivery/content-item/cohort/${cohortId}/module/${moduleId}/available-surveys`,
         { headers: { Authorization: `Bearer ${token}` } }
       )
-      return response.data.surveys ?? []
+      return response.data.availableSurveys ?? []
     },
     enabled: enabled && !!cohortId && !!moduleId,
   })
 }
 
 export function useAvailableAssessments(cohortId: string, moduleId: string, enabled = true) {
-  return useQuery<AvailableContentItem[]>({
+  return useQuery<AvailableAssessment[]>({
     queryKey: ["available-assessments", cohortId, moduleId],
     queryFn: async () => {
       const token = getCookie("token")
-      const response = await axios.get<AvailableItemsResponse>(
+      const response = await axios.get<AvailableAssessmentsResponse>(
         `${process.env.NEXT_PUBLIC_API_TRAINING_DELIVERY}/training-delivery/content-item/cohort/${cohortId}/module/${moduleId}/available-assessments`,
         { headers: { Authorization: `Bearer ${token}` } }
       )
-      return response.data.assessments ?? []
+      return response.data.availableAssessments ?? []
     },
     enabled: enabled && !!cohortId && !!moduleId,
   })
